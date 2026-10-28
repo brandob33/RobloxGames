@@ -300,7 +300,7 @@ local function buildGui(): Refs
 	local slideCaption = textLabel(slideBack, "Caption", UDim2.fromScale(1, 1.8), 14)
 	slideCaption.AnchorPoint = Vector2.new(0.5, 1)
 	slideCaption.Position = UDim2.fromScale(0.5, -0.2)
-	slideCaption.Text = "SLIDE [C]"
+	slideCaption.Text = "SLIDE / JUKE [C]"
 	slideCaption.TextStrokeTransparency = 0.4
 	slideBack.Parent = gui
 

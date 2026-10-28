@@ -3,7 +3,8 @@
 -- (players and bots). Purely visual: nothing here touches physics or
 -- replicates.
 --
--- Slide: feet-first, leaning back, one arm trailing for balance.
+-- Slide: flat on your back, feet-first. Lead leg stretched out, the other
+--        tucked under, one hand trailing on the ground, the other up.
 -- Dive:  a launch and belly-flop. The body tips forward to flat over the
 --        lunge, arms stretched out ahead, head up, and lands on the ground,
 --        then gets back up as the dive ends.
@@ -35,15 +36,23 @@ type Entry = {
 	alpha: number,
 	kind: PoseKind?,
 	startedAt: number, -- os.clock() when the current pose began
+	joints: { [string]: CFrame }, -- this frame's limb targets
 }
 
 -- R15 joint Transforms (radians around each joint's X axis: + swings a limb
 -- forward / tips the head back). Joints not listed are straightened.
 local SLIDE_JOINTS: { [string]: CFrame } = {
-	RightShoulder = CFrame.Angles(math.rad(-45), 0, math.rad(15)),
-	LeftShoulder = CFrame.Angles(math.rad(35), 0, 0),
-	LeftHip = CFrame.Angles(math.rad(10), 0, 0),
-	RightHip = CFrame.Angles(math.rad(-6), 0, 0),
+	-- Lead leg: straight out ahead (it already points forward with the body
+	-- tipped back), lifted a touch off the ground.
+	RightHip = CFrame.Angles(math.rad(8), 0, 0),
+	-- Trailing leg: thigh up, knee folded so the foot tucks under.
+	LeftHip = CFrame.Angles(math.rad(50), 0, math.rad(-10)),
+	LeftKnee = CFrame.Angles(math.rad(-100), 0, 0),
+	-- Right hand trails on the ground behind, left arm up for balance.
+	RightShoulder = CFrame.Angles(math.rad(-40), 0, math.rad(25)),
+	LeftShoulder = CFrame.Angles(math.rad(70), 0, math.rad(-15)),
+	-- Head tipped forward to look where you're going.
+	Neck = CFrame.Angles(math.rad(-35), 0, 0),
 }
 local DIVE_JOINTS: { [string]: CFrame } = {
 	RightShoulder = CFrame.Angles(math.rad(170), 0, math.rad(-8)),
@@ -56,8 +65,10 @@ local DIVE_JOINTS: { [string]: CFrame } = {
 }
 local NO_JOINTS: { [string]: CFrame } = {}
 
-local SLIDE_LEAN = math.rad(68) -- tip back
-local SLIDE_DROP = 1.1
+local SLIDE_LEAN = math.rad(80) -- almost flat on your back
+local SLIDE_DROP = 1.9 -- roughly down onto the ground
+-- Your own slide also lowers HipHeight (MovementController), so sink less.
+local SLIDE_LOCAL_DROP = 0.8
 local DIVE_LEAN = math.rad(-90) -- flat, face down
 local DIVE_LAUNCH_LEAN = math.rad(-35) -- leaning into the jump at the start
 local DIVE_DROP = 2.3 -- root height above the ground, roughly: lie on it
@@ -111,6 +122,7 @@ local function getEntry(character: Model): Entry?
 		alpha = 0,
 		kind = nil,
 		startedAt = 0,
+		joints = NO_JOINTS,
 	}
 	entries[character] = newEntry
 	return newEntry
@@ -146,8 +158,7 @@ local function bodyPose(
 	now: number
 ): (number, number)
 	if kind == "Slide" then
-		-- Your own slide already sinks via HipHeight (MovementController).
-		return SLIDE_LEAN, if isLocal then 0 else SLIDE_DROP
+		return SLIDE_LEAN, if isLocal then SLIDE_LOCAL_DROP else SLIDE_DROP
 	end
 	-- Dive: lean into the launch, tip to flat over the lunge, land.
 	local progress = (now - entry.startedAt) / Config.DIVE_LUNGE_SECONDS
@@ -157,6 +168,14 @@ local function bodyPose(
 	local hop = math.sin(math.clamp(progress, 0, 1) * math.pi) * 0.6
 	local drop = DIVE_DROP * tip * tip - hop
 	return lean, drop
+end
+
+-- Override the limbs' animation Transforms toward the pose.
+local function applyJoints(entry: Entry)
+	for _, motor in entry.motors do
+		local jointTarget = entry.joints[motor.Name] or CFrame.identity
+		motor.Transform = motor.Transform:Lerp(jointTarget, entry.alpha)
+	end
 end
 
 local function update(character: Model, dt: number, now: number)
@@ -204,14 +223,11 @@ local function update(character: Model, dt: number, now: number)
 		* CFrame.Angles(lean * alpha, 0, 0)
 		* entry.baseC0
 
-	local joints = if not entry.isR15
+	entry.joints = if not entry.isR15
 		then NO_JOINTS
 		elseif kind == "Dive" then DIVE_JOINTS
 		else SLIDE_JOINTS
-	for _, motor in entry.motors do
-		local jointTarget = joints[motor.Name] or CFrame.identity
-		motor.Transform = motor.Transform:Lerp(jointTarget, alpha)
-	end
+	applyJoints(entry)
 end
 
 local function step(dt: number)
@@ -243,6 +259,19 @@ function PoseController.start()
 	-- PreSimulation runs right after the Animator writes this frame's joint
 	-- Transforms, which is where Roblox documents overriding them.
 	RunService.PreSimulation:Connect(step)
+	-- And again just before drawing, so the run cycle can't show through
+	-- whichever order the Animator runs in.
+	RunService:BindToRenderStep(
+		"CourierClashPoses",
+		Enum.RenderPriority.Character.Value + 1,
+		function()
+			for _, entry in entries do
+				if entry.alpha > 0 and entry.kind then
+					applyJoints(entry)
+				end
+			end
+		end
+	)
 end
 
 return PoseController

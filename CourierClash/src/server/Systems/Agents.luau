@@ -32,6 +32,7 @@ export type Agent = {
 	staminaRegen: number, -- per second, Config.STAMINA_REGEN plus shop perks
 	staminaRegenAt: number, -- os.clock()
 	slidingUntil: number, -- os.clock(); tackles miss while sliding
+	jukeUntil: number, -- os.clock(); carrier's dodge dash
 	slideReadyAt: number, -- os.clock()
 	boostUntil: number, -- os.clock(); pickup speed burst
 	diveLungeUntil: number, -- os.clock(); tackle dive, lunging forward
@@ -77,6 +78,7 @@ local function newAgent(name: string, team: TeamId, player: Player?): Agent
 		staminaRegen = Config.STAMINA_REGEN,
 		staminaRegenAt = 0,
 		slidingUntil = 0,
+		jukeUntil = 0,
 		slideReadyAt = 0,
 		boostUntil = 0,
 		diveLungeUntil = 0,
@@ -149,6 +151,10 @@ function Agents.isSliding(agent: Agent): boolean
 	return os.clock() < agent.slidingUntil
 end
 
+function Agents.isJuking(agent: Agent): boolean
+	return os.clock() < agent.jukeUntil
+end
+
 function Agents.isDiving(agent: Agent): boolean
 	return os.clock() < agent.divingUntil
 end
@@ -165,12 +171,14 @@ function Agents.speedLimit(agent: Agent): number
 		return 0
 	elseif Agents.isDiving(agent) then
 		return if now < agent.diveLungeUntil then Config.DIVE_SPEED else 0
+	elseif Agents.isJuking(agent) then
+		return Config.JUKE_SPEED
 	elseif Agents.isSliding(agent) then
 		return Config.SLIDE_SPEED
 	elseif Agents.isBoosted(agent) then
 		return Config.PICKUP_BOOST_SPEED
 	elseif agent.sprinting then
-		return if agent.carrying then Config.CARRIER_SPRINT_SPEED else Config.SPRINT_SPEED
+		return if agent.carrying then Config.CARRIER_SPEED else Config.SPRINT_SPEED
 	end
 	return if agent.carrying then Config.CARRIER_SPEED else Config.RUN_SPEED
 end
@@ -239,6 +247,7 @@ function Agents.teleport(agent: Agent, cframe: CFrame)
 	end
 	agent.stunnedUntil = 0
 	agent.slidingUntil = 0
+	agent.jukeUntil = 0
 	agent.boostUntil = 0
 	agent.diveLungeUntil = 0
 	agent.divingUntil = 0

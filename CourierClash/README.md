@@ -12,11 +12,12 @@ fine with one person; real players always take priority, and
 | | |
 | --- | --- |
 | Teams | **Ember** (orange, west end) vs **Tide** (blue, east end), 10 couriers each |
-| Pick up | Walk into the package. You get a 1 s speed burst and 2 s where you can't be tackled (force-field bubble), then carriers run slower (14 vs 18 studs/s) |
-| Sprint | Hold `Shift` (gamepad `L2`, touch: Sprint button toggles). 27 studs/s, 20 while carrying. Uses stamina |
-| Slide | `C` or `Ctrl` (gamepad `B`, touch: Slide button). Feet-first burst; tackles miss you mid-slide. Free, just a 1.6 s cooldown (shown on the HUD) |
+| Pick up | Walk into the package. You get a 1 s speed burst and 2 s where you can't be tackled (force-field bubble), then carriers run slower (14 vs 18 studs/s) and can't sprint or slide |
+| Sprint | Hold `Shift` (gamepad `L2`, touch: Sprint button toggles). 27 studs/s. Uses stamina. Not while carrying |
+| Slide | `C` or `Ctrl` (gamepad `B`, touch: Slide button). A quick, flat, feet-first slide; tackles miss you mid-slide. Free, just a 1.6 s cooldown (shown on the HUD) |
+| Juke | The slide key while carrying: a quick dash the way you're steering, 2.2 s cooldown. No tackle immunity, so time it |
 | Score | Carry it into your own glowing drop zone |
-| Tackle | `F`, gamepad `R1`, or the on-screen button. A committed dive: you lunge, then you're down for 1 s and can't do anything. 9-stud reach, 2.5 s cooldown. Knocks the package loose and stuns the carrier for 1.25 s |
+| Tackle | `F`, gamepad `R1`, or the on-screen button. A committed, aimed dive: it only lands if your body reaches the carrier during the lunge. Miss and you're on the ground for 1 s. 2.5 s cooldown. Knocks the package loose and stuns the carrier for 1.25 s |
 | Kickoff | At the start and after every delivery, everyone goes back to their spawn box behind a force-field gate for an 8 s countdown |
 | Round | Lobby (20 s, set `LOBBY_SECONDS = 60` for release) → 3 min round (first to 3) → 8 s results → lobby |
 
@@ -57,6 +58,10 @@ you a temporary profile and says coins won't be saved.
 
 To produce a place file instead: `rojo build -o CourierClash.rbxl`.
 
+Set **Game Settings → Avatar → Avatar Type to R15**. Everyone gets the same
+blocky body and default animations (players keep their own head, face and
+clothes), so hitboxes are fair and the slide and dive poses look right.
+
 When you publish, set **Max Players to 20** (Game Settings → Places → or the
 place's Configure page) so both teams can be full of people; bots fill
 whatever's left.
@@ -92,6 +97,7 @@ src/
 │       ├── Sprint.luau       stamina, sprint and slide rules
 │       ├── Match.luau        round loop, scores, state broadcast
 │       ├── Bots.luau         bot fill + AI
+│       ├── Avatars.luau      same blocky R15 body for everyone
 │       ├── PlayerData.luau   saved coins/items (DataStore, session lock)
 │       ├── Shop.luau         coin rewards, shop purchases, Robux receipts
 │       └── Cheats.luau       Studio-only QA

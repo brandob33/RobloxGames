@@ -30,6 +30,8 @@ type Brain = {
 	spawning: boolean,
 	idleTrack: AnimationTrack?,
 	runTrack: AnimationTrack?,
+	-- Where the current dive is aimed (leads the carrier a little).
+	diveTarget: Vector3,
 }
 
 local Bots = {}
@@ -233,6 +235,7 @@ local function addBot(team: TeamId)
 		spawning = false,
 		idleTrack = nil,
 		runTrack = nil,
+		diveTarget = Vector3.zero,
 	}
 	brains[agent] = brain
 	task.spawn(spawnBot, brain)
@@ -344,7 +347,10 @@ local function tryDodge(agent: Agent, position: Vector3)
 	end
 end
 
-local function tryTackle(agent: Agent, position: Vector3)
+local DIVE_LEAD_SECONDS = 0.2
+
+local function tryTackle(brain: Brain, position: Vector3)
+	local agent = brain.agent
 	local carrier = Parcel.getCarrier()
 	if not carrier or carrier.team == agent.team or Parcel.isProtected() then
 		return
@@ -355,6 +361,10 @@ local function tryTackle(agent: Agent, position: Vector3)
 	end
 	if (carrierRoot.Position - position).Magnitude <= Config.TACKLE_RANGE * 0.85 then
 		if random:NextNumber() < TACKLE_CHANCE then
+			-- Aim the dive where the carrier is heading; it has to connect.
+			local velocity = carrierRoot.AssemblyLinearVelocity
+			brain.diveTarget = carrierRoot.Position
+				+ Vector3.new(velocity.X, 0, velocity.Z) * DIVE_LEAD_SECONDS
 			Parcel.tackle(agent)
 		end
 	end
@@ -421,7 +431,9 @@ local function think(brain: Brain, now: number)
 	if Agents.isDiving(agent) then
 		-- Lunge forward, then lie still until the dive ends.
 		local lunging = os.clock() < agent.diveLungeUntil
-		humanoid:MoveTo(if lunging then position + root.CFrame.LookVector * 12 else position)
+		local aim = flat(brain.diveTarget - position)
+		local heading = if aim.Magnitude > 0.5 then aim.Unit else root.CFrame.LookVector
+		humanoid:MoveTo(if lunging then position + heading * 12 else position)
 		return
 	end
 	if Match.getPhase() ~= "Playing" or Match.isLocked() or Agents.isStunned(agent) then
@@ -429,7 +441,7 @@ local function think(brain: Brain, now: number)
 		humanoid:MoveTo(position)
 		return
 	end
-	tryTackle(agent, position)
+	tryTackle(brain, position)
 	tryDodge(agent, position)
 	local target, sprint = chooseTarget(brain, position)
 	Sprint.setWanted(agent, sprint)

@@ -54,6 +54,8 @@ local slideStartedAt = 0
 local slideEndsAt = 0
 local slideReadyAt = 0
 local slideDirection = Vector3.zero
+local jukeEndsAt = 0
+local jukeDirection = Vector3.zero
 local diveLungeEndsAt = 0
 local diveEndsAt = 0
 local diveDirection = Vector3.zero
@@ -87,8 +89,13 @@ local function isDiving(now: number): boolean
 	return now > diveEndsAt + DIVE_FLAG_IGNORE_SECONDS and characterFlag("Diving")
 end
 
+local function isJuking(now: number): boolean
+	return now < jukeEndsAt
+end
+
 local function sprintActive(now: number): boolean
-	if not wantSprint then
+	-- Carriers can't sprint (the server enforces this too).
+	if not wantSprint or characterFlag("Carrying") then
 		return false
 	end
 	if localPlayer:GetAttribute("Sprinting") == true then
@@ -106,11 +113,14 @@ local function walkSpeed(now: number): number
 		return if now < diveLungeEndsAt then Config.DIVE_SPEED else 0
 	end
 	local carrying = characterFlag("Carrying")
+	if isJuking(now) then
+		return Config.JUKE_SPEED
+	end
 	if characterFlag("Boosted") and not isSliding(now) then
 		return Config.PICKUP_BOOST_SPEED
 	end
 	if sprintActive(now) or isSliding(now) then
-		return if carrying then Config.CARRIER_SPRINT_SPEED else Config.SPRINT_SPEED
+		return Config.SPRINT_SPEED
 	end
 	return if carrying then Config.CARRIER_SPEED else Config.RUN_SPEED
 end
@@ -201,13 +211,36 @@ function MovementController.cancelDive()
 	endDive()
 end
 
--- Returns true if a slide started.
+-- The carrier's slide key: a quick dash the way you're steering.
+local function juke(currentHumanoid: Humanoid, currentRoot: BasePart, now: number): boolean
+	if isJuking(now) or isDiving(now) or now < slideReadyAt or characterFlag("Stunned") then
+		return false
+	end
+	local direction = flat(currentHumanoid.MoveDirection)
+	if direction.Magnitude < 0.1 then
+		direction = flat(currentRoot.CFrame.LookVector)
+	end
+	if direction.Magnitude < 0.01 then
+		return false
+	end
+	jukeDirection = direction.Unit
+	jukeEndsAt = now + Config.JUKE_SECONDS
+	slideReadyAt = now + Config.JUKE_COOLDOWN
+	Net.fire("Slide")
+	slideStarted.fire(Config.JUKE_COOLDOWN)
+	return true
+end
+
+-- Returns true if a slide (or, while carrying, a juke) started.
 function MovementController.slide(): boolean
 	local now = os.clock()
 	local currentHumanoid = humanoid
 	local currentRoot = root
 	if not currentHumanoid or not currentRoot or currentHumanoid.Health <= 0 then
 		return false
+	end
+	if characterFlag("Carrying") then
+		return juke(currentHumanoid, currentRoot, now)
 	end
 	-- Same rules the server checks in Sprint.trySlide.
 	if
@@ -268,6 +301,19 @@ local function onPreSimulation()
 		endSlide()
 	end
 
+	if isJuking(now) then
+		if characterFlag("Stunned") or currentHumanoid.Health <= 0 then
+			jukeEndsAt = 0
+		else
+			local velocity = currentRoot.AssemblyLinearVelocity
+			currentRoot.AssemblyLinearVelocity = Vector3.new(
+				jukeDirection.X * Config.JUKE_SPEED,
+				velocity.Y,
+				jukeDirection.Z * Config.JUKE_SPEED
+			)
+		end
+	end
+
 	if now < diveEndsAt then
 		if characterFlag("Stunned") or currentHumanoid.Health <= 0 then
 			endDive()
@@ -306,6 +352,7 @@ end
 
 local function onCharacterAdded(character: Model)
 	slideEndsAt = 0
+	jukeEndsAt = 0
 	restoreHipHeight = nil
 	diveLungeEndsAt = 0
 	diveEndsAt = 0
@@ -346,8 +393,11 @@ function MovementController.init()
 	Net.on("SlideResult", function(accepted: unknown)
 		-- Server refused (stamina/cooldown disagreed): stop the local slide so
 		-- we don't outrun the server's speed limit.
-		if accepted == false and isSliding(os.clock()) then
-			endSlide()
+		if accepted == false then
+			if isSliding(os.clock()) then
+				endSlide()
+			end
+			jukeEndsAt = 0
 		end
 	end)
 

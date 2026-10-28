@@ -37,7 +37,7 @@ return table.freeze({
 	RUN_SPEED = 18,
 	CARRIER_SPEED = 14,
 	SPRINT_SPEED = 27,
-	CARRIER_SPRINT_SPEED = 20,
+	-- Carriers can't sprint or slide; they get a juke instead (below).
 	BOT_SPEED_FACTOR = 0.92,
 	-- Burst of speed for whoever picks up the parcel
 	PICKUP_BOOST_SPEED = 30,
@@ -53,8 +53,14 @@ return table.freeze({
 	-- Slide: C/Ctrl. A short burst that dodges tackles. Free; only the
 	-- cooldown limits it.
 	SLIDE_SPEED = 42,
-	SLIDE_SECONDS = 0.55,
+	SLIDE_SECONDS = 0.28, -- a quick juke, not a long boost
 	SLIDE_COOLDOWN = 1.6,
+
+	-- Juke: what the slide key does while carrying. A quick dash in the
+	-- direction you're steering, to shake a tackler. No tackle immunity.
+	JUKE_SPEED = 40,
+	JUKE_SECONDS = 0.22,
+	JUKE_COOLDOWN = 2.2,
 
 	-- Parcel
 	PICKUP_RADIUS = 5,
@@ -63,8 +69,11 @@ return table.freeze({
 	STEAL_PROTECTION_SECONDS = 2,
 	DELIVERY_RADIUS = 10,
 
-	-- Tackle
+	-- Tackle: a dive that only lands if your body actually reaches the
+	-- carrier during the lunge (within TACKLE_HIT_RADIUS). Bots start a dive
+	-- inside TACKLE_RANGE.
 	TACKLE_RANGE = 9,
+	TACKLE_HIT_RADIUS = 4.5,
 	TACKLE_COOLDOWN = 2.5,
 	STUN_SECONDS = 1.25,
 	-- Tackling is a dive: a short lunge, then you're on the ground and can't

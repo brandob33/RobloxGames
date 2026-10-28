@@ -50,6 +50,7 @@ end
 
 local function canSprint(agent: Agent): boolean
 	return agent.sprintWanted
+		and not agent.carrying
 		and not agent.exhausted
 		and agent.stamina > 0
 		and not Agents.isStunned(agent)
@@ -72,9 +73,31 @@ function Sprint.setWanted(agent: Agent, wanted: boolean)
 	setSprinting(agent, canSprint(agent))
 end
 
--- Shared by the Slide remote and bots. Returns true if the slide happens.
+-- The carrier's version of the slide key: a short dash, no tackle immunity.
+local function tryJuke(agent: Agent, now: number): boolean
+	if
+		Agents.isJuking(agent)
+		or Agents.isStunned(agent)
+		or Agents.isDiving(agent)
+		or now < agent.slideReadyAt - COOLDOWN_TOLERANCE
+		or not Agents.humanoid(agent)
+	then
+		return false
+	end
+	agent.jukeUntil = now + Config.JUKE_SECONDS + SLIDE_GRACE
+	agent.slideReadyAt = now + Config.JUKE_COOLDOWN
+	Agents.refreshSpeed(agent)
+	Agents.refreshAt(agent, agent.jukeUntil)
+	return true
+end
+
+-- Shared by the Slide remote and bots. Returns true if the slide (or, for
+-- the carrier, the juke) happens.
 function Sprint.trySlide(agent: Agent): boolean
 	local now = os.clock()
+	if agent.carrying then
+		return tryJuke(agent, now)
+	end
 	-- Slides are free: only the cooldown limits them.
 	if
 		Agents.isSliding(agent)
