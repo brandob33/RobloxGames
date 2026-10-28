@@ -28,6 +28,9 @@ Parcel.Changed = changed
 -- Fired when a carrier reaches their own drop zone.
 local delivered: Signal.Signal<Agent> = Signal.new()
 Parcel.Delivered = delivered
+-- Fired with the tackler when a tackle knocks the parcel loose.
+local tackleLanded: Signal.Signal<Agent> = Signal.new()
+Parcel.TackleLanded = tackleLanded
 
 local STEP_INTERVAL = 0.1
 local CARRY_OFFSET = CFrame.new(0, 3.4, 0)
@@ -229,12 +232,7 @@ end
 -- so spamming the button gains nothing. Returns true if the carrier was hit.
 function Parcel.tackle(attacker: Agent): boolean
 	local now = os.clock()
-	if
-		not active
-		or now < attacker.tackleReadyAt
-		or Agents.isStunned(attacker)
-		or Agents.isDiving(attacker)
-	then
+	if not active or now < attacker.tackleReadyAt or Agents.isStunned(attacker) or Agents.isDiving(attacker) then
 		return false
 	end
 	if not Movement.verify(attacker) then
@@ -286,6 +284,7 @@ function Parcel.tackle(attacker: Agent): boolean
 		actorName = attacker.name,
 		targetName = target.name,
 	})
+	tackleLanded.fire(attacker)
 	return true
 end
 

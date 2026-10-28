@@ -20,6 +20,29 @@ fine with one person; real players always take priority, and
 
 All numbers live in [`src/shared/Config.luau`](src/shared/Config.luau).
 
+## Coins and the shop
+
+You earn coins for playing: 25 per delivery, 10 per landed tackle, 50 for a
+round win and 15 for every round you finish. Coins, trails and upgrades are
+saved between sessions. Open the shop with the **SHOP** button or **M**.
+Buying works between games (lobby, results); equipping works anytime.
+
+- **Trails** are cosmetic only.
+- **Upgrades** are small and capped (3 levels each): Stamina Reserve
+  (+5 max stamina per level) and Quick Breath (+8% stamina regen per
+  level). They can only be bought with coins earned in-game.
+- **Coin packs** (Robux) are optional. Create a Developer Product for each
+  pack (Creator Dashboard → your experience → Monetization → Developer
+  Products) and paste its ID into `COIN_PACKS` in
+  [`src/shared/ShopCatalog.luau`](src/shared/ShopCatalog.luau). Packs with
+  ID `0` are hidden.
+
+Prices and items live in `ShopCatalog.luau`.
+
+To test saving in Studio, publish the place and turn on **Game Settings →
+Security → Enable Studio Access to API Services**. Without it, Studio gives
+you a temporary profile and says coins won't be saved.
+
 ## Run it in Roblox Studio
 
 1. Install the toolchain once with [Rokit](https://github.com/rojo-rbx/rokit):
@@ -50,6 +73,7 @@ src/
 │   ├── Types.luau            payload + state types
 │   ├── Config.luau           every tunable number
 │   ├── Remotes.luau          the one list of remotes
+│   ├── ShopCatalog.luau      trails, upgrades, coin packs and prices
 │   └── Util/
 │       ├── Signal.luau
 │       ├── MatchLogic.luau   pure rules (teams, bots, winner)
@@ -66,6 +90,8 @@ src/
 │       ├── Sprint.luau       stamina, sprint and slide rules
 │       ├── Match.luau        round loop, scores, state broadcast
 │       ├── Bots.luau         bot fill + AI
+│       ├── PlayerData.luau   saved coins/items (DataStore, session lock)
+│       ├── Shop.luau         coin rewards, shop purchases, Robux receipts
 │       └── Cheats.luau       Studio-only QA
 └── client/                 → StarterPlayerScripts.Client
     ├── init.client.luau
@@ -75,6 +101,7 @@ src/
         ├── TackleController.luau  input + cooldown
         ├── MovementController.luau sprint/slide/dive input, prediction, FOV
         ├── PoseController.luau    slide and dive body poses
+        ├── ShopController.luau    coin counter + shop screen
         └── DevKeys.luau           Studio-only QA keys
 ```
 
@@ -108,7 +135,7 @@ src/
 
 ## Not in this version
 
-- No saved data (wins, coins), no lobby shop yet, no sounds or custom art. Everything
+- No sounds or custom art. Everything
   is built from plain parts so there are no asset IDs to upload yet.
 - Bots steer straight at their target and jump or sidestep when stuck;
   no pathfinding.

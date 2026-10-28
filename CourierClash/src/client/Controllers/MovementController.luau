@@ -234,8 +234,7 @@ function MovementController.slide(): boolean
 
 	restoreHipHeight = currentHumanoid.HipHeight
 	currentHumanoid.HipHeight = math.max(0, currentHumanoid.HipHeight - SLIDE_HIP_DROP)
-	TweenService:Create(currentHumanoid, CAMERA_TWEEN, { CameraOffset = SLIDE_CAMERA_OFFSET })
-		:Play()
+	TweenService:Create(currentHumanoid, CAMERA_TWEEN, { CameraOffset = SLIDE_CAMERA_OFFSET }):Play()
 
 	Net.fire("Slide")
 	slideStarted.fire(Config.SLIDE_COOLDOWN)
@@ -273,11 +272,8 @@ local function onPreSimulation()
 			endDive()
 		elseif now < diveLungeEndsAt then
 			local velocity = currentRoot.AssemblyLinearVelocity
-			currentRoot.AssemblyLinearVelocity = Vector3.new(
-				diveDirection.X * Config.DIVE_SPEED,
-				velocity.Y,
-				diveDirection.Z * Config.DIVE_SPEED
-			)
+			currentRoot.AssemblyLinearVelocity =
+				Vector3.new(diveDirection.X * Config.DIVE_SPEED, velocity.Y, diveDirection.Z * Config.DIVE_SPEED)
 		end
 	elseif jumpLocked then
 		endDive()

@@ -28,6 +28,8 @@ export type Agent = {
 	sprinting: boolean,
 	exhausted: boolean, -- ran dry; must regen to SPRINT_MIN_STAMINA first
 	stamina: number,
+	staminaMax: number, -- Config.STAMINA_MAX plus shop perks
+	staminaRegen: number, -- per second, Config.STAMINA_REGEN plus shop perks
 	staminaRegenAt: number, -- os.clock()
 	slidingUntil: number, -- os.clock(); tackles miss while sliding
 	slideReadyAt: number, -- os.clock()
@@ -71,6 +73,8 @@ local function newAgent(name: string, team: TeamId, player: Player?): Agent
 		sprinting = false,
 		exhausted = false,
 		stamina = Config.STAMINA_MAX,
+		staminaMax = Config.STAMINA_MAX,
+		staminaRegen = Config.STAMINA_REGEN,
 		staminaRegenAt = 0,
 		slidingUntil = 0,
 		slideReadyAt = 0,
@@ -272,8 +276,7 @@ function Agents.setCharacter(agent: Agent, character: Model?)
 		return
 	end
 
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-		or character:WaitForChild("Humanoid", 5) :: Humanoid?
+	local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 5) :: Humanoid?
 	if not humanoid or agent.character ~= character then
 		return
 	end

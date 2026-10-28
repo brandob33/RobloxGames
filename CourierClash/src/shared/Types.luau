@@ -32,21 +32,38 @@ export type MatchState = {
 	lockedUntil: number,
 }
 
-export type NoticeKind =
-	"Pickup"
-	| "Delivered"
-	| "Tackled"
-	| "Dodged"
-	| "Returned"
-	| "RoundStart"
-	| "RoundEnd"
-	| "Go"
+export type NoticeKind = "Pickup" | "Delivered" | "Tackled" | "Dodged" | "Returned" | "RoundStart" | "RoundEnd" | "Go"
 
 export type Notice = {
 	kind: NoticeKind,
 	team: TeamId?,
 	actorName: string?,
 	targetName: string?,
+}
+
+-- What the shop shows for the local player (S→C "Profile").
+export type ProfileView = {
+	coins: number,
+	ownedTrails: { string },
+	equippedTrail: string, -- "" = none
+	perks: { [string]: number }, -- perk id → level
+	-- false until saved data has loaded (shop shows "Loading...")
+	loaded: boolean,
+	-- false in Studio when DataStores are off: progress won't be kept
+	saving: boolean,
+}
+
+export type CoinReason = "Delivery" | "Tackle" | "Win" | "Played" | "Purchase"
+
+export type ShopRequest = {
+	-- Refresh = resend my Profile (the client asks once its UI is ready)
+	kind: "BuyTrail" | "BuyPerk" | "Equip" | "Refresh",
+	id: string, -- trail or perk id; "" with Equip = take the trail off
+}
+
+export type ShopResult = {
+	ok: boolean,
+	message: string,
 }
 
 export type CheatCommand = "ScoreEmber" | "ScoreTide" | "EndRound" | "GiveParcel"

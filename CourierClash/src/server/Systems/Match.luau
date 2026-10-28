@@ -29,6 +29,9 @@ local Match = {}
 -- Fired with the round number just before players and bots respawn.
 local roundStarting: Signal.Signal<number> = Signal.new()
 Match.RoundStarting = roundStarting
+-- Fired with the result when a round ends (not when it's abandoned).
+local roundEnded: Signal.Signal<Types.Winner> = Signal.new()
+Match.RoundEnded = roundEnded
 
 local phase: Types.Phase = "Waiting"
 local phaseEndsAt = 0
@@ -233,9 +236,9 @@ local function playRound()
 	local result = MatchLogic.winner(scores)
 	winner = result
 	setPhase("Results", Config.RESULTS_SECONDS)
-	local notice: Types.Notice =
-		{ kind = "RoundEnd", team = if result == "Draw" then nil else result }
+	local notice: Types.Notice = { kind = "RoundEnd", team = if result == "Draw" then nil else result }
 	Net.fireAll("Notice", notice)
+	roundEnded.fire(result)
 	waitForPhaseEnd()
 end
 

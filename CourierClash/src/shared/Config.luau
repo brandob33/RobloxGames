@@ -73,6 +73,12 @@ return table.freeze({
 	DIVE_LUNGE_SECONDS = 0.3,
 	DIVE_SECONDS = 1.0,
 
+	-- Coins (saved between sessions; spent in the lobby shop)
+	COINS_DELIVERY = 25,
+	COINS_TACKLE = 10,
+	COINS_WIN = 50,
+	COINS_PLAYED = 15, -- everyone still in the game when a round ends
+
 	-- Arena footprint (studs)
 	ARENA_LENGTH = 560,
 	ARENA_WIDTH = 380,
