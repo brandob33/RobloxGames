@@ -346,7 +346,7 @@ end
 
 local function tryTackle(agent: Agent, position: Vector3)
 	local carrier = Parcel.getCarrier()
-	if not carrier or carrier.team == agent.team then
+	if not carrier or carrier.team == agent.team or Parcel.isProtected() then
 		return
 	end
 	local carrierRoot = Agents.root(carrier)

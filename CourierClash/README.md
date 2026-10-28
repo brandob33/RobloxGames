@@ -10,9 +10,9 @@ fine with one person; real players always take priority, and
 | | |
 | --- | --- |
 | Teams | **Ember** (orange, west end) vs **Tide** (blue, east end), 10 couriers each |
-| Pick up | Walk into the parcel. You get a 1 s speed burst, then carriers run slower (14 vs 18 studs/s) |
+| Pick up | Walk into the parcel. You get a 1 s speed burst and 2 s where you can't be tackled (force-field bubble), then carriers run slower (14 vs 18 studs/s) |
 | Sprint | Hold `Shift` (gamepad `L2`, touch: Sprint button toggles). 27 studs/s, 20 while carrying. Uses stamina |
-| Slide | `C` or `Ctrl` (gamepad `B`, touch: Slide button) while sprinting. Feet-first burst; tackles miss you mid-slide. 1.6 s cooldown (shown on the HUD), costs stamina |
+| Slide | `C` or `Ctrl` (gamepad `B`, touch: Slide button). Feet-first burst; tackles miss you mid-slide. Free, just a 1.6 s cooldown (shown on the HUD) |
 | Score | Carry it into your own glowing drop zone |
 | Tackle | `F`, gamepad `R1`, or the on-screen button. A committed dive: you lunge, then you're down for 1 s and can't do anything. 9-stud reach, 2.5 s cooldown. Knocks the parcel loose and stuns the carrier for 1.25 s |
 | Kickoff | At the start and after every delivery, everyone goes back to their spawn box behind a force-field gate for an 8 s countdown |
@@ -93,7 +93,7 @@ src/
   teleport hacks can't steal or run the parcel home.
 - Sprint and slide are requested, not declared: the server owns stamina and
   cooldowns (`Sprint.luau`) and the Movement check uses the same speed limit,
-  so a client can't sprint forever or slide at will.
+  so a client can't sprint forever or slide off cooldown.
 - Bots are simulated by the server (network owner `nil`).
 
 ## Checks
