@@ -6,6 +6,9 @@
 --   Notice         S→C  Notice (feed/banner events)
 --   TackleCooldown S→C  seconds until the player's tackle is ready again
 --   Tackle         C→S  no arguments; the server picks the target
+--   Shove          C→S  no arguments; the server picks the target
+--   ShoveCooldown  S→C  seconds until the player's shove is ready again
+--   Shoved         S→C  Vector3: flat unit direction you were shoved
 --   RequestState   C→S  no arguments; asks for a fresh snapshot (late join)
 --   Sprint         C→S  boolean: sprint key held or released
 --   Slide          C→S  no arguments; the server checks sprint/stamina/cooldown
@@ -21,6 +24,9 @@ export type RemoteName =
 	| "Notice"
 	| "TackleCooldown"
 	| "Tackle"
+	| "Shove"
+	| "ShoveCooldown"
+	| "Shoved"
 	| "RequestState"
 	| "Sprint"
 	| "Slide"
@@ -36,6 +42,9 @@ local NAMES: { RemoteName } = {
 	"Notice",
 	"TackleCooldown",
 	"Tackle",
+	"Shove",
+	"ShoveCooldown",
+	"Shoved",
 	"RequestState",
 	"Sprint",
 	"Slide",

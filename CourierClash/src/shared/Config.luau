@@ -18,7 +18,7 @@ return table.freeze({
 	TEAM_COLORS = TEAM_COLORS,
 
 	-- Teams are topped up with bots to this many couriers each.
-	TEAM_SIZE = 10,
+	TEAM_SIZE = 5,
 	-- false = no bots at all (teams are only real players)
 	FILL_WITH_BOTS = true,
 	MIN_HUMANS_TO_START = 1,
@@ -68,6 +68,20 @@ return table.freeze({
 	-- A new carrier can't be tackled for this long after picking it up.
 	STEAL_PROTECTION_SECONDS = 2,
 	DELIVERY_RADIUS = 10,
+	-- Two packages, one on each side of the center line. Each courier can
+	-- carry one at a time.
+	PACKAGE_COUNT = 2,
+
+	-- Shove: E / gamepad X. Knocks the nearest opponent in front of you
+	-- back and staggers them, to clear a path for your carrier or peel an
+	-- escort off. Sliding dodges it; a freshly protected carrier can't be shoved.
+	SHOVE_RANGE = 7,
+	SHOVE_COOLDOWN = 1.8,
+	SHOVE_SPEED = 45, -- knockback speed
+	SHOVE_KNOCKBACK_SECONDS = 0.22,
+	SHOVE_STAGGER_SECONDS = 0.35, -- can't move after the knockback
+	-- After the stagger you can't be shoved again for this long (no stunlocks).
+	SHOVE_IMMUNITY_SECONDS = 1,
 
 	-- Tackle: a dive that only lands if your body actually reaches the
 	-- carrier during the lunge (within TACKLE_HIT_RADIUS). Bots start a dive
@@ -89,11 +103,11 @@ return table.freeze({
 	COINS_PLAYED = 15, -- everyone still in the game when a round ends
 
 	-- Arena footprint (studs)
-	ARENA_LENGTH = 560,
-	ARENA_WIDTH = 380,
+	ARENA_LENGTH = 260,
+	ARENA_WIDTH = 170,
 
 	-- Spawn boxes (studs). Tall walls so nobody jumps out during kickoff.
 	SPAWN_BOX_DEPTH = 30,
-	SPAWN_BOX_WIDTH = 100,
+	SPAWN_BOX_WIDTH = 60,
 	SPAWN_WALL_HEIGHT = 60,
 })

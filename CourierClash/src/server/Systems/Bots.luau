@@ -15,6 +15,7 @@ local Agents = require(script.Parent.Agents)
 local Arena = require(script.Parent.Arena)
 local Match = require(script.Parent.Match)
 local Parcel = require(script.Parent.Parcel)
+local Shove = require(script.Parent.Shove)
 local Sprint = require(script.Parent.Sprint)
 
 type Agent = Agents.Agent
@@ -48,6 +49,10 @@ local SPRINT_RANGE = 70
 -- A carrying bot slides to dodge when a tackler gets this close.
 local DODGE_RANGE = Config.TACKLE_RANGE + 4
 local DODGE_CHANCE = 0.35
+-- Chance per think tick to shove an opponent in range: high while
+-- clearing a path for a teammate's carrier, low otherwise.
+local SHOVE_ESCORT_CHANCE = 0.4
+local SHOVE_CHANCE = 0.08
 
 -- Roblox's default R15 animations. Bots are server-side NPCs, so the
 -- character Animate script doesn't run for them; we drive idle/run here.
@@ -303,17 +308,31 @@ local function near(a: Vector3, b: Vector3, range: number): boolean
 	return flat(a - b).Magnitude <= range
 end
 
+-- The package this bot cares about: the one nearest to it.
+local function focusPackage(position: Vector3): number
+	local best = 1
+	local bestDistance = math.huge
+	for index = 1, Parcel.count() do
+		local distance = flat(Parcel.getPosition(index) - position).Magnitude
+		if distance < bestDistance then
+			best, bestDistance = index, distance
+		end
+	end
+	return best
+end
+
 -- Where to go, and whether it's worth sprinting there.
 local function chooseTarget(brain: Brain, position: Vector3): (Vector3, boolean)
 	local agent = brain.agent
-	local carrier = Parcel.getCarrier()
 	local ownZone = Arena.dropZoneCenter(agent.team)
 	local lane = (brain.slot % 5) - 2 -- -2..2, spreads teammates out
 
-	if carrier == agent then
+	if agent.carrying then
 		return ownZone, true
 	end
 
+	local index = focusPackage(position)
+	local carrier = Parcel.getCarrier(index)
 	if carrier then
 		local carrierRoot = Agents.root(carrier)
 		if carrierRoot then
@@ -329,8 +348,8 @@ local function chooseTarget(brain: Brain, position: Vector3): (Vector3, boolean)
 		end
 	end
 
-	-- Parcel is free: the closest few chase it, the rest hold guard lanes.
-	local parcelPosition = Parcel.getPosition()
+	-- Package is free: the closest few chase it, the rest hold guard lanes.
+	local parcelPosition = Parcel.getPosition(index)
 	if rankByDistance(agent, parcelPosition, position) <= CHASERS_PER_TEAM then
 		return parcelPosition, near(position, parcelPosition, SPRINT_RANGE)
 	end
@@ -339,7 +358,7 @@ local function chooseTarget(brain: Brain, position: Vector3): (Vector3, boolean)
 end
 
 local function tryDodge(agent: Agent, position: Vector3)
-	if Parcel.getCarrier() ~= agent then
+	if not agent.carrying then
 		return
 	end
 	if nearestEnemy(position, agent.team, DODGE_RANGE) and random:NextNumber() < DODGE_CHANCE then
@@ -349,13 +368,32 @@ end
 
 local DIVE_LEAD_SECONDS = 0.2
 
+-- The closest enemy carrier that can be tackled right now.
+local function nearestEnemyCarrier(agent: Agent, position: Vector3): BasePart?
+	local best: BasePart? = nil
+	local bestDistance = math.huge
+	for index = 1, Parcel.count() do
+		local carrier = Parcel.getCarrier(index)
+		local carrierRoot = carrier
+			and carrier.team ~= agent.team
+			and not Parcel.isProtected(index)
+			and Agents.root(carrier)
+		if carrierRoot then
+			local distance = (carrierRoot.Position - position).Magnitude
+			if distance < bestDistance then
+				best, bestDistance = carrierRoot, distance
+			end
+		end
+	end
+	return best
+end
+
 local function tryTackle(brain: Brain, position: Vector3)
 	local agent = brain.agent
-	local carrier = Parcel.getCarrier()
-	if not carrier or carrier.team == agent.team or Parcel.isProtected() then
+	if agent.carrying then
 		return
 	end
-	local carrierRoot = Agents.root(carrier)
+	local carrierRoot = nearestEnemyCarrier(agent, position)
 	if not carrierRoot then
 		return
 	end
@@ -367,6 +405,34 @@ local function tryTackle(brain: Brain, position: Vector3)
 				+ Vector3.new(velocity.X, 0, velocity.Z) * DIVE_LEAD_SECONDS
 			Parcel.tackle(agent)
 		end
+	end
+end
+
+-- True if a teammate carrying a package is close by.
+local function escorting(agent: Agent, position: Vector3): boolean
+	for index = 1, Parcel.count() do
+		local carrier = Parcel.getCarrier(index)
+		local carrierRoot = carrier
+			and carrier ~= agent
+			and carrier.team == agent.team
+			and Agents.root(carrier)
+		if carrierRoot and near(position, carrierRoot.Position, ESCORT_RADIUS) then
+			return true
+		end
+	end
+	return false
+end
+
+local function tryShove(agent: Agent, position: Vector3)
+	if agent.carrying or os.clock() < agent.shoveReadyAt then
+		return
+	end
+	if not nearestEnemy(position, agent.team, Config.SHOVE_RANGE) then
+		return
+	end
+	local chance = if escorting(agent, position) then SHOVE_ESCORT_CHANCE else SHOVE_CHANCE
+	if random:NextNumber() < chance then
+		Shove.tryShove(agent)
 	end
 end
 
@@ -428,6 +494,11 @@ local function think(brain: Brain, now: number)
 		return
 	end
 	animate(brain, root)
+	if Agents.isKnockedBack(agent) then
+		-- Keep flying the way the shove sent us.
+		humanoid:MoveTo(position + agent.knockbackDirection * Config.SHOVE_SPEED)
+		return
+	end
 	if Agents.isDiving(agent) then
 		-- Lunge forward, then lie still until the dive ends.
 		local lunging = os.clock() < agent.diveLungeUntil
@@ -443,6 +514,7 @@ local function think(brain: Brain, now: number)
 	end
 	tryTackle(brain, position)
 	tryDodge(agent, position)
+	tryShove(agent, position)
 	local target, sprint = chooseTarget(brain, position)
 	Sprint.setWanted(agent, sprint)
 	steer(brain, humanoid, position, target, now)

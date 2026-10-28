@@ -55,17 +55,12 @@ function Match.getPhase(): Types.Phase
 end
 
 function Match.snapshot(): Types.MatchState
-	local carrier = Parcel.getCarrier()
-	local carrierPlayer = carrier and carrier.player
 	return {
 		phase = phase,
 		phaseEndsAt = phaseEndsAt,
 		scores = table.clone(scores),
 		scoreToWin = Config.SCORE_TO_WIN,
-		parcelStatus = Parcel.getStatus(),
-		carrierName = carrier and carrier.name,
-		carrierTeam = carrier and carrier.team,
-		carrierUserId = carrierPlayer and carrierPlayer.UserId,
+		packages = Parcel.views(),
 		winner = winner,
 		lockedUntil = lockedUntil,
 	}
@@ -94,7 +89,7 @@ function Match.addScore(team: TeamId, amount: number)
 		return
 	end
 	MatchLogic.addTo(scores, team, amount)
-	-- Freeze the parcel now rather than on the round loop's next poll; the
+	-- Freeze the packages now rather than on the round loop's next poll; the
 	-- loop either ends the round or runs the next kickoff.
 	Parcel.setActive(false)
 	kickoffPending = true

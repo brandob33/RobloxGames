@@ -1,6 +1,6 @@
 --!strict
--- HUD: score bar + timer, parcel status, event banner, team tag and the
--- tackle button. Renders server snapshots only; computes nothing that
+-- HUD: score bar + timer, package status, event banner, team tag and the
+-- tackle and shove buttons. Renders server snapshots only; computes nothing that
 -- matters. Layout is built in code with Scale sizes so it fits phones.
 
 local Players = game:GetService("Players")
@@ -14,6 +14,7 @@ local Types = require(ReplicatedStorage.Shared.Types)
 local MatchLogic = require(ReplicatedStorage.Shared.Util.MatchLogic)
 local Net = require(script.Parent.Parent.Net)
 local TackleController = require(script.Parent.TackleController)
+local ShoveController = require(script.Parent.ShoveController)
 local MovementController = require(script.Parent.MovementController)
 
 type TeamId = Types.TeamId
@@ -53,6 +54,9 @@ type Refs = {
 	tackleButton: TextButton,
 	tackleScale: UIScale,
 	cooldownFill: Frame,
+	shoveButton: TextButton,
+	shoveScale: UIScale,
+	shoveFill: Frame,
 	sprintButton: TextButton,
 	slideButton: TextButton,
 	slideScale: UIScale,
@@ -65,6 +69,7 @@ local refs: Refs
 local bannerToken = 0
 local bannerFade: Tween? = nil
 local cooldownTween: Tween? = nil
+local shoveTween: Tween? = nil
 local slideCooldownTween: Tween? = nil
 local slideMeterTween: Tween? = nil
 local staminaTween: Tween? = nil
@@ -256,6 +261,7 @@ local function buildGui(): Refs
 	-- gamepad R1 also work); Sprint and Slide only on touch devices, since
 	-- keyboard and gamepad players hold Shift/L2 and press C/Ctrl/B.
 	local tackle = roundButton(gui, "TackleButton", "TACKLE\n[F]", UDim2.fromScale(0.97, 0.7), 0.13)
+	local shove = roundButton(gui, "ShoveButton", "SHOVE\n[E]", UDim2.fromScale(0.82, 0.62), 0.1)
 	local isTouch = UserInputService.TouchEnabled
 	local sprint = roundButton(gui, "SprintButton", "SPRINT", UDim2.fromScale(0.83, 0.86), 0.11)
 	sprint.button.Visible = isTouch
@@ -319,6 +325,9 @@ local function buildGui(): Refs
 		tackleButton = tackle.button,
 		tackleScale = tackle.scale,
 		cooldownFill = tackle.fill,
+		shoveButton = shove.button,
+		shoveScale = shove.scale,
+		shoveFill = shove.fill,
 		sprintButton = sprint.button,
 		slideButton = slide.button,
 		slideScale = slide.scale,
@@ -368,7 +377,7 @@ local function noticeText(notice: Types.Notice): string?
 	elseif notice.kind == "Dodged" then
 		return actor .. " slid past " .. (notice.targetName or "a tackle") .. "!"
 	elseif notice.kind == "Returned" then
-		return "Package returned to center"
+		return "Package returned to its spot"
 	elseif notice.kind == "RoundStart" then
 		return "GO! First to " .. Config.SCORE_TO_WIN .. " deliveries"
 	elseif notice.kind == "Go" then
@@ -423,19 +432,53 @@ local function statusText(current: Types.MatchState): string
 	elseif current.phase == "Results" then
 		return "Round over"
 	end
-	if current.parcelStatus == "Carried" then
-		if current.carrierUserId == localPlayer.UserId then
-			return "You have the package! Run it to your drop zone!"
+	-- Most urgent first: you carrying, an enemy carrying, a teammate
+	-- carrying, a loose package, then both on their pedestals.
+	local team = myTeam()
+	local enemy: Types.PackageView? = nil
+	local friend: Types.PackageView? = nil
+	local loose = false
+	for _, package in current.packages do
+		if package.status == "Carried" then
+			if package.carrierUserId == localPlayer.UserId then
+				return "You have a package! Run it to your drop zone!"
+			elseif team and package.carrierTeam == team then
+				friend = friend or package
+			else
+				enemy = enemy or package
+			end
+		elseif package.status == "Loose" then
+			loose = true
 		end
-		local who = current.carrierName or "Someone"
-		if current.carrierTeam and current.carrierTeam == myTeam() then
-			return who .. " has the package. Protect them!"
-		end
-		return who .. " has the package. Tackle them!"
-	elseif current.parcelStatus == "Loose" then
-		return "The package is loose! Grab it!"
 	end
-	return "Grab the package at the center!"
+	if enemy then
+		return (enemy.carrierName or "Someone") .. " has a package. Tackle them!"
+	elseif friend then
+		return (friend.carrierName or "Someone") .. " has a package. Shove defenders away!"
+	elseif loose then
+		return "A package is loose! Grab it!"
+	end
+	return "Grab a package! One on the left, one on the right"
+end
+
+-- Color for the status line: the team of whoever the line is about.
+local function statusColor(current: Types.MatchState): Color3
+	for _, package in current.packages do
+		if package.status == "Carried" and package.carrierUserId == localPlayer.UserId then
+			return teamColor(package.carrierTeam)
+		end
+	end
+	local team = myTeam()
+	local friendTeam: TeamId? = nil
+	for _, package in current.packages do
+		if package.status == "Carried" then
+			if package.carrierTeam ~= team then
+				return teamColor(package.carrierTeam)
+			end
+			friendTeam = package.carrierTeam
+		end
+	end
+	return if friendTeam then teamColor(friendTeam) else PARCEL_COLOR
 end
 
 local PHASE_TITLES: { [Types.Phase]: string } = {
@@ -469,9 +512,7 @@ local function render()
 	end
 	refs.phaseLabel.Text = PHASE_TITLES[current.phase]
 	refs.statusLabel.Text = statusText(current)
-	refs.statusLabel.TextColor3 = if current.parcelStatus == "Carried"
-		then teamColor(current.carrierTeam)
-		else PARCEL_COLOR
+	refs.statusLabel.TextColor3 = statusColor(current)
 	renderTimer()
 end
 
@@ -503,6 +544,10 @@ end
 
 local function onCooldown(seconds: number)
 	cooldownTween = drainFill(refs.cooldownFill, seconds, cooldownTween)
+end
+
+local function onShoveCooldown(seconds: number)
+	shoveTween = drainFill(refs.shoveFill, seconds, shoveTween)
 end
 
 local function onSlideCooldown(seconds: number)
@@ -558,6 +603,11 @@ function HudController.init()
 	refs.tackleButton.Activated:Connect(function()
 		pop(refs.tackleScale)
 		TackleController.request()
+	end)
+	ShoveController.CooldownChanged.connect(onShoveCooldown)
+	refs.shoveButton.Activated:Connect(function()
+		pop(refs.shoveScale)
+		ShoveController.request()
 	end)
 	localPlayer:GetPropertyChangedSignal("Team"):Connect(renderTeamTag)
 

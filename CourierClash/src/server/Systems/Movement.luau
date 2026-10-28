@@ -8,11 +8,12 @@
 -- is the sum of each interval's speed limit, so stuns and carrier slowdown
 -- are respected and a lag burst is judged against the whole window instead
 -- of one short sample. A violation marks the agent "suspect" for a while:
--- suspects can't pick up or tackle, and a suspect carrier loses the parcel.
+-- suspects can't pick up or tackle, and a suspect carrier loses the package.
 
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local Config = require(ReplicatedStorage.Shared.Config)
 local Signal = require(ReplicatedStorage.Shared.Util.Signal)
 local Agents = require(script.Parent.Agents)
 
@@ -43,6 +44,7 @@ type Grace = { limit: number, speed: number, untilTime: number }
 local graces: { [Agent]: Grace } = {}
 local GRACE_EXTRA = 0.15
 local GRACE_MAX = 0.6
+local KNOCKBACK_ALLOWANCE = Config.SHOVE_SPEED * Config.SHOVE_KNOCKBACK_SECONDS * TOLERANCE
 
 -- After a server teleport the client may still report its old position
 -- for a moment. Until the player shows up at the destination they count as
@@ -127,7 +129,16 @@ local function sample(agent: Agent, now: number)
 	for i = 2, #samples do
 		allowed += samples[i - 1].speed * (samples[i].time - samples[i - 1].time) * TOLERANCE
 	end
-	local moved = flat(root.Position - oldest.position).Magnitude
+	local displacement = flat(root.Position - oldest.position)
+	-- A shove pushes the player (their client moves them) while the server
+	-- counts them as stunned. Allow the push's distance, but only along
+	-- the shove's direction, so it can't be spent running somewhere else.
+	if now < agent.knockbackUntil + WINDOW + GRACE_MAX then
+		local along = displacement:Dot(agent.knockbackDirection)
+		local credit = math.clamp(along, 0, KNOCKBACK_ALLOWANCE)
+		displacement -= agent.knockbackDirection * credit
+	end
+	local moved = displacement.Magnitude
 	if moved > allowed then
 		suspectUntil[agent] = now + SUSPECT_SECONDS
 		-- Restart the window so one violation isn't counted every step.

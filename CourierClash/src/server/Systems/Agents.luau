@@ -37,6 +37,11 @@ export type Agent = {
 	boostUntil: number, -- os.clock(); pickup speed burst
 	diveLungeUntil: number, -- os.clock(); tackle dive, lunging forward
 	divingUntil: number, -- os.clock(); tackle dive, down and locked out
+	shoveReadyAt: number, -- os.clock()
+	shovingUntil: number, -- os.clock(); arms-out shove pose
+	knockbackUntil: number, -- os.clock(); being shoved back
+	knockbackDirection: Vector3, -- unit, flat
+	shoveImmuneUntil: number, -- os.clock(); can't be shoved again before this
 }
 
 local Agents = {}
@@ -83,6 +88,11 @@ local function newAgent(name: string, team: TeamId, player: Player?): Agent
 		boostUntil = 0,
 		diveLungeUntil = 0,
 		divingUntil = 0,
+		shoveReadyAt = 0,
+		shovingUntil = 0,
+		knockbackUntil = 0,
+		knockbackDirection = Vector3.zero,
+		shoveImmuneUntil = 0,
 	}
 end
 
@@ -159,6 +169,14 @@ function Agents.isDiving(agent: Agent): boolean
 	return os.clock() < agent.divingUntil
 end
 
+function Agents.isKnockedBack(agent: Agent): boolean
+	return os.clock() < agent.knockbackUntil
+end
+
+function Agents.isShoving(agent: Agent): boolean
+	return os.clock() < agent.shovingUntil
+end
+
 function Agents.isBoosted(agent: Agent): boolean
 	return os.clock() < agent.boostUntil
 end
@@ -167,6 +185,8 @@ end
 -- players; refreshSpeed applies it to the Humanoid.
 function Agents.speedLimit(agent: Agent): number
 	local now = os.clock()
+	-- A shove's knockback counts as stunned here; Movement allows the push
+	-- itself separately, only along the shove's direction.
 	if Agents.isStunned(agent) then
 		return 0
 	elseif Agents.isDiving(agent) then
@@ -195,13 +215,17 @@ function Agents.refreshSpeed(agent: Agent)
 	if not agent.player then
 		-- Players' WalkSpeed is set by their own MovementController from the
 		-- attributes below; writing it here too would fight it for a frame.
-		humanoid.WalkSpeed = Agents.speedLimit(agent) * Config.BOT_SPEED_FACTOR
+		local limit = if Agents.isKnockedBack(agent)
+			then Config.SHOVE_SPEED
+			else Agents.speedLimit(agent)
+		humanoid.WalkSpeed = limit * Config.BOT_SPEED_FACTOR
 	end
 	character:SetAttribute("Carrying", agent.carrying)
 	character:SetAttribute("Stunned", Agents.isStunned(agent))
 	character:SetAttribute("Sliding", Agents.isSliding(agent))
 	character:SetAttribute("Diving", Agents.isDiving(agent))
 	character:SetAttribute("Boosted", Agents.isBoosted(agent))
+	character:SetAttribute("Shoving", Agents.isShoving(agent))
 end
 
 -- Re-apply speed and attributes once a timed state has run out. task.delay
@@ -251,14 +275,33 @@ function Agents.teleport(agent: Agent, cframe: CFrame)
 	agent.boostUntil = 0
 	agent.diveLungeUntil = 0
 	agent.divingUntil = 0
+	agent.shovingUntil = 0
+	agent.knockbackUntil = 0
 	character:PivotTo(cframe)
 	root.AssemblyLinearVelocity = Vector3.zero
 	Agents.refreshSpeed(agent)
 	teleported.fire({ agent = agent, position = cframe.Position })
 end
 
+-- Shoved: knocked back along `direction` for SHOVE_KNOCKBACK_SECONDS, then
+-- staggered (can't move) for SHOVE_STAGGER_SECONDS. The Shove system moves
+-- the body; this only sets the state and speed limit.
+function Agents.knockback(agent: Agent, direction: Vector3)
+	local now = os.clock()
+	agent.knockbackDirection = direction
+	agent.knockbackUntil = now + Config.SHOVE_KNOCKBACK_SECONDS
+	agent.stunnedUntil =
+		math.max(agent.stunnedUntil, agent.knockbackUntil + Config.SHOVE_STAGGER_SECONDS)
+	agent.shoveImmuneUntil = agent.stunnedUntil + Config.SHOVE_IMMUNITY_SECONDS
+	agent.jukeUntil = 0
+	agent.sprinting = false
+	Agents.refreshSpeed(agent)
+	Agents.refreshAt(agent, agent.knockbackUntil)
+	Agents.refreshAt(agent, agent.stunnedUntil)
+end
+
 function Agents.stun(agent: Agent, seconds: number)
-	agent.stunnedUntil = os.clock() + seconds
+	agent.stunnedUntil = math.max(agent.stunnedUntil, os.clock() + seconds)
 	Agents.refreshSpeed(agent)
 	Agents.refreshAt(agent, agent.stunnedUntil)
 end
@@ -281,6 +324,7 @@ function Agents.setCharacter(agent: Agent, character: Model?)
 	end
 	agent.character = character
 	agent.stunnedUntil = 0
+	agent.knockbackUntil = 0
 	if not character then
 		return
 	end
