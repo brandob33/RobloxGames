@@ -50,15 +50,17 @@ return table.freeze({
 	STAMINA_REGEN_DELAY = 0.8,
 	SPRINT_MIN_STAMINA = 15, -- needed to start sprinting again after running dry
 
-	-- Slide: sprint + C/Ctrl. A short burst that dodges tackles.
+	-- Slide: C/Ctrl. A short burst that dodges tackles. Free; only the
+	-- cooldown limits it.
 	SLIDE_SPEED = 42,
 	SLIDE_SECONDS = 0.55,
 	SLIDE_COOLDOWN = 1.6,
-	SLIDE_STAMINA = 20,
 
 	-- Parcel
 	PICKUP_RADIUS = 5,
 	DROP_IMMUNITY_SECONDS = 1.5,
+	-- A new carrier can't be tackled for this long after picking it up.
+	STEAL_PROTECTION_SECONDS = 2,
 	DELIVERY_RADIUS = 10,
 
 	-- Tackle

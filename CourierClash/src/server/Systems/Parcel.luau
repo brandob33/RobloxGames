@@ -42,6 +42,16 @@ local active = false
 local parcelPart: Part
 local weld: WeldConstraint? = nil
 local lastCarrierPosition = Arena.PARCEL_HOME
+-- os.clock() until which the current carrier can't be tackled.
+local protectedUntil = 0
+local shield: ForceField? = nil
+
+local function clearShield()
+	if shield then
+		shield:Destroy()
+		shield = nil
+	end
+end
 
 local function flat(vector: Vector3): Vector3
 	return Vector3.new(vector.X, 0, vector.Z)
@@ -117,6 +127,8 @@ end
 local function releaseCarrier(): Agent?
 	local previous = carrier
 	carrier = nil
+	protectedUntil = 0
+	clearShield()
 	if weld then
 		weld:Destroy()
 		weld = nil
@@ -145,6 +157,18 @@ local function attach(agent: Agent, root: BasePart)
 
 	carrier = agent
 	agent.carrying = true
+	-- Steal protection, shown as a force-field bubble while it lasts.
+	protectedUntil = os.clock() + Config.STEAL_PROTECTION_SECONDS
+	local bubble = Instance.new("ForceField")
+	bubble.Name = "StealProtection"
+	bubble.Visible = true
+	bubble.Parent = agent.character
+	shield = bubble
+	task.delay(Config.STEAL_PROTECTION_SECONDS, function()
+		if shield == bubble then
+			clearShield()
+		end
+	end)
 	-- Burst of speed on pickup (also refreshes speed for carrying).
 	Agents.boost(agent, Config.PICKUP_BOOST_SECONDS)
 	lastCarrierPosition = root.Position
@@ -180,6 +204,11 @@ end
 
 function Parcel.getCarrier(): Agent?
 	return carrier
+end
+
+-- True while a fresh carrier can't be tackled.
+function Parcel.isProtected(): boolean
+	return os.clock() < protectedUntil
 end
 
 function Parcel.getPosition(): Vector3
@@ -229,6 +258,10 @@ function Parcel.tackle(attacker: Agent): boolean
 	end
 	local offset = targetRoot.Position - root.Position
 	if offset.Magnitude > Config.TACKLE_RANGE then
+		return false
+	end
+	if Parcel.isProtected() then
+		-- Just picked it up: can't be stolen yet. The dive is spent.
 		return false
 	end
 	if Agents.isSliding(target) then

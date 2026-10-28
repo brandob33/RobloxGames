@@ -29,9 +29,6 @@ local SLIDE_GRACE = 0.15
 -- Clients start their cooldown at the key press and we start ours when the
 -- remote arrives, so latency jitter can make an honest slide look early.
 local COOLDOWN_TOLERANCE = 0.3
--- The client sees stamina ~one sample late while sprint drains it, so accept
--- a slide a little short of the cost (the client itself asks for a margin).
-local SLIDE_STAMINA_TOLERANCE = 8
 
 local function publish(agent: Agent)
 	local player = agent.player
@@ -74,19 +71,16 @@ end
 -- Shared by the Slide remote and bots. Returns true if the slide happens.
 function Sprint.trySlide(agent: Agent): boolean
 	local now = os.clock()
+	-- Slides are free: only the cooldown limits them.
 	if
-		not agent.sprinting
-		or Agents.isSliding(agent)
+		Agents.isSliding(agent)
 		or Agents.isStunned(agent)
 		or Agents.isDiving(agent)
 		or now < agent.slideReadyAt - COOLDOWN_TOLERANCE
-		or agent.stamina < Config.SLIDE_STAMINA - SLIDE_STAMINA_TOLERANCE
 		or not Agents.humanoid(agent)
 	then
 		return false
 	end
-	agent.stamina = math.max(0, agent.stamina - Config.SLIDE_STAMINA)
-	agent.staminaRegenAt = now + Config.STAMINA_REGEN_DELAY
 	local duration = Config.SLIDE_SECONDS + SLIDE_GRACE
 	agent.slidingUntil = now + duration
 	agent.slideReadyAt = now + Config.SLIDE_COOLDOWN

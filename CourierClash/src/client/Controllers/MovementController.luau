@@ -1,6 +1,6 @@
 --!strict
 -- Local movement feel: sprint (hold Shift / L2 / the Sprint button), slide
--- (C or Ctrl / B / the Slide button while sprinting) and a camera FOV kick.
+-- (C or Ctrl / B / the Slide button; free, cooldown only) and a camera FOV kick.
 --
 -- Everything here is prediction for instant response. The server's Sprint
 -- system owns stamina and decides whether a sprint or slide is allowed, and
@@ -47,7 +47,6 @@ local MOVING_SPEED = 2
 -- Stamina margins over the server's rules: the replicated Stamina value
 -- lags the server's while sprint drains it, so ask only when clearly OK.
 local SPRINT_PREDICT_MARGIN = 1
-local SLIDE_STAMINA_MARGIN = 4
 
 local wantSprint = false
 local sprintPressedAt = 0
@@ -215,9 +214,7 @@ function MovementController.slide(): boolean
 		isSliding(now)
 		or isDiving(now)
 		or now < slideReadyAt
-		or not sprintActive(now)
 		or characterFlag("Stunned")
-		or stamina() < Config.SLIDE_STAMINA + SLIDE_STAMINA_MARGIN
 		or currentHumanoid.FloorMaterial == Enum.Material.Air
 	then
 		return false
