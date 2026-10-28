@@ -228,54 +228,45 @@ function Parcel.forceGive(agent: Agent): boolean
 	return true
 end
 
--- Shared by the Tackle remote and bots. Starts the cooldown even on a miss
--- so spamming the button gains nothing. Returns true if the carrier was hit.
-function Parcel.tackle(attacker: Agent): boolean
-	local now = os.clock()
-	if
-		not active
-		or now < attacker.tackleReadyAt
-		or Agents.isStunned(attacker)
-		or Agents.isDiving(attacker)
-	then
-		return false
-	end
-	if not Movement.verify(attacker) then
-		return false
-	end
-	local root = Agents.root(attacker)
-	if not root or not Agents.humanoid(attacker) then
-		return false
-	end
-	attacker.tackleReadyAt = now + Config.TACKLE_COOLDOWN
-	-- Every tackle is a committed dive, hit or miss.
-	Agents.dive(attacker)
+-- Dives in progress: attacker → os.clock() when its hit window closes.
+local dives: { [Agent]: number } = {}
+-- Covers the attacker's ping: their lunge reaches us a little late.
+local DIVE_HIT_GRACE = 0.15
+local DIVE_HIT_HEIGHT = 5
 
+-- See whether a diving attacker has reached the enemy carrier. Returns true
+-- once the dive is resolved (hit, dodged or blocked by steal protection).
+local function checkDive(attacker: Agent): boolean
 	local target = carrier
 	if not target or target == attacker or target.team == attacker.team then
 		return false
 	end
+	local root = Agents.root(attacker)
 	local targetRoot = Agents.root(target)
-	if not targetRoot then
+	if not root or not targetRoot then
 		return false
 	end
 	local offset = targetRoot.Position - root.Position
-	if offset.Magnitude > Config.TACKLE_RANGE then
+	if
+		flat(offset).Magnitude > Config.TACKLE_HIT_RADIUS
+		or math.abs(offset.Y) > DIVE_HIT_HEIGHT
+		or Movement.isSuspect(attacker)
+	then
 		return false
 	end
 	if Parcel.isProtected() then
 		-- Just picked it up: can't be stolen yet. The dive is spent.
-		return false
+		return true
 	end
 	if Agents.isSliding(target) then
-		-- Slid under it: the tackle whiffs and the cooldown is spent.
+		-- Slid under it: the tackle whiffs.
 		notify({
 			kind = "Dodged",
 			team = target.team,
 			actorName = target.name,
 			targetName = attacker.name,
 		})
-		return false
+		return true
 	end
 
 	-- Parcel pops forward, away from the tackler.
@@ -291,6 +282,46 @@ function Parcel.tackle(attacker: Agent): boolean
 	})
 	tackleLanded.fire(attacker)
 	return true
+end
+
+-- Shared by the Tackle remote and bots. Every tackle is a committed dive:
+-- it lands only if the diver's body reaches the carrier during the lunge,
+-- so aim and timing matter. Starts the cooldown even on a miss. Returns
+-- true if a dive started.
+function Parcel.tackle(attacker: Agent): boolean
+	local now = os.clock()
+	if
+		not active
+		or now < attacker.tackleReadyAt
+		or Agents.isStunned(attacker)
+		or Agents.isDiving(attacker)
+	then
+		return false
+	end
+	if not Movement.verify(attacker) then
+		return false
+	end
+	if not Agents.root(attacker) or not Agents.humanoid(attacker) then
+		return false
+	end
+	attacker.tackleReadyAt = now + Config.TACKLE_COOLDOWN
+	Agents.dive(attacker)
+	if not checkDive(attacker) then
+		dives[attacker] = now + Config.DIVE_LUNGE_SECONDS + DIVE_HIT_GRACE
+	end
+	return true
+end
+
+local function stepDives()
+	if next(dives) == nil then
+		return
+	end
+	local now = os.clock()
+	for attacker, untilTime in dives do
+		if not active or now > untilTime or checkDive(attacker) then
+			dives[attacker] = nil
+		end
+	end
 end
 
 local function stepCarried(agent: Agent)
@@ -375,6 +406,7 @@ local function onTackleRequest(player: Player)
 end
 
 local function onAgentLost(agent: Agent)
+	dives[agent] = nil
 	if carrier == agent then
 		dropAt(lastCarrierPosition)
 	end
@@ -395,6 +427,8 @@ end
 function Parcel.start()
 	local accumulated = 0
 	RunService.Heartbeat:Connect(function(dt)
+		-- Dives are short, so check them every frame.
+		stepDives()
 		accumulated += dt
 		if accumulated < STEP_INTERVAL then
 			return
