@@ -31,6 +31,9 @@ export type Agent = {
 	staminaRegenAt: number, -- os.clock()
 	slidingUntil: number, -- os.clock(); tackles miss while sliding
 	slideReadyAt: number, -- os.clock()
+	boostUntil: number, -- os.clock(); pickup speed burst
+	diveLungeUntil: number, -- os.clock(); tackle dive, lunging forward
+	divingUntil: number, -- os.clock(); tackle dive, down and locked out
 }
 
 local Agents = {}
@@ -41,6 +44,10 @@ local characterLost: Signal.Signal<Agent> = Signal.new()
 Agents.CharacterLost = characterLost
 local removed: Signal.Signal<Agent> = Signal.new()
 Agents.Removed = removed
+-- Fired after the server moves an agent (kickoff), so movement checks
+-- don't count the jump as a teleport hack.
+local teleported: Signal.Signal<{ agent: Agent, position: Vector3 }> = Signal.new()
+Agents.Teleported = teleported
 -- Fired with the new human count whenever a player joins, leaves or swaps team.
 local humansChanged: Signal.Signal<number> = Signal.new()
 Agents.HumansChanged = humansChanged
@@ -67,6 +74,9 @@ local function newAgent(name: string, team: TeamId, player: Player?): Agent
 		staminaRegenAt = 0,
 		slidingUntil = 0,
 		slideReadyAt = 0,
+		boostUntil = 0,
+		diveLungeUntil = 0,
+		divingUntil = 0,
 	}
 end
 
@@ -135,13 +145,26 @@ function Agents.isSliding(agent: Agent): boolean
 	return os.clock() < agent.slidingUntil
 end
 
+function Agents.isDiving(agent: Agent): boolean
+	return os.clock() < agent.divingUntil
+end
+
+function Agents.isBoosted(agent: Agent): boolean
+	return os.clock() < agent.boostUntil
+end
+
 -- Top speed the agent is allowed right now. Movement enforces this for
 -- players; refreshSpeed applies it to the Humanoid.
 function Agents.speedLimit(agent: Agent): number
+	local now = os.clock()
 	if Agents.isStunned(agent) then
 		return 0
+	elseif Agents.isDiving(agent) then
+		return if now < agent.diveLungeUntil then Config.DIVE_SPEED else 0
 	elseif Agents.isSliding(agent) then
 		return Config.SLIDE_SPEED
+	elseif Agents.isBoosted(agent) then
+		return Config.PICKUP_BOOST_SPEED
 	elseif agent.sprinting then
 		return if agent.carrying then Config.CARRIER_SPRINT_SPEED else Config.SPRINT_SPEED
 	end
@@ -164,16 +187,67 @@ function Agents.refreshSpeed(agent: Agent)
 	end
 	character:SetAttribute("Carrying", agent.carrying)
 	character:SetAttribute("Stunned", Agents.isStunned(agent))
+	character:SetAttribute("Sliding", Agents.isSliding(agent))
+	character:SetAttribute("Diving", Agents.isDiving(agent))
+	character:SetAttribute("Boosted", Agents.isBoosted(agent))
+end
+
+-- Re-apply speed and attributes once a timed state has run out. task.delay
+-- and os.clock() can disagree by a frame, so wait a hair past the deadline
+-- and re-arm if it still hasn't passed; otherwise an attribute like Diving
+-- could be republished as true with nothing left to clear it.
+local REFRESH_MARGIN = 0.03
+
+function Agents.refreshAt(agent: Agent, deadline: number)
+	task.delay(math.max(0, deadline - os.clock()) + REFRESH_MARGIN, function()
+		if os.clock() < deadline then
+			Agents.refreshAt(agent, deadline)
+		else
+			Agents.refreshSpeed(agent)
+		end
+	end)
+end
+
+function Agents.boost(agent: Agent, seconds: number)
+	agent.boostUntil = os.clock() + seconds
+	Agents.refreshSpeed(agent)
+	Agents.refreshAt(agent, agent.boostUntil)
+end
+
+-- Tackle dive: lunge, then lie on the ground unable to act.
+function Agents.dive(agent: Agent)
+	local now = os.clock()
+	agent.diveLungeUntil = now + Config.DIVE_LUNGE_SECONDS
+	agent.divingUntil = now + Config.DIVE_SECONDS
+	agent.sprinting = false
+	Agents.refreshSpeed(agent)
+	Agents.refreshAt(agent, agent.diveLungeUntil)
+	Agents.refreshAt(agent, agent.divingUntil)
+end
+
+-- Move an agent's character (kickoff). Clears timed states so everyone
+-- starts the play fresh.
+function Agents.teleport(agent: Agent, cframe: CFrame)
+	local character = agent.character
+	local root = Agents.root(agent)
+	if not character or not root then
+		return
+	end
+	agent.stunnedUntil = 0
+	agent.slidingUntil = 0
+	agent.boostUntil = 0
+	agent.diveLungeUntil = 0
+	agent.divingUntil = 0
+	character:PivotTo(cframe)
+	root.AssemblyLinearVelocity = Vector3.zero
+	Agents.refreshSpeed(agent)
+	teleported.fire({ agent = agent, position = cframe.Position })
 end
 
 function Agents.stun(agent: Agent, seconds: number)
 	agent.stunnedUntil = os.clock() + seconds
 	Agents.refreshSpeed(agent)
-	task.delay(seconds, function()
-		if not Agents.isStunned(agent) then
-			Agents.refreshSpeed(agent)
-		end
-	end)
+	Agents.refreshAt(agent, agent.stunnedUntil)
 end
 
 local function clearCharacterConnections(agent: Agent)

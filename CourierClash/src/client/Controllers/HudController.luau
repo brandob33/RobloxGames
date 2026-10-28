@@ -30,6 +30,8 @@ local PARCEL_COLOR = Color3.fromRGB(240, 196, 64)
 local STAMINA_COLOR = Color3.fromRGB(120, 220, 255)
 local STAMINA_LOW_COLOR = Color3.fromRGB(255, 90, 90)
 local STAMINA_TWEEN = TweenInfo.new(0.15, Enum.EasingStyle.Linear)
+local SLIDE_READY_COLOR = Color3.fromRGB(255, 214, 90)
+local SLIDE_CHARGING_COLOR = Color3.fromRGB(140, 140, 150)
 
 local POP = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local SETTLE = TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
@@ -56,6 +58,7 @@ type Refs = {
 	slideScale: UIScale,
 	slideFill: Frame,
 	staminaFill: Frame,
+	slideMeter: Frame,
 }
 local refs: Refs
 
@@ -63,6 +66,7 @@ local bannerToken = 0
 local bannerFade: Tween? = nil
 local cooldownTween: Tween? = nil
 local slideCooldownTween: Tween? = nil
+local slideMeterTween: Tween? = nil
 local staminaTween: Tween? = nil
 
 local function teamName(team: TeamId): string
@@ -276,6 +280,30 @@ local function buildGui(): Refs
 	staminaFill.Parent = staminaBack
 	staminaBack.Parent = gui
 
+	-- Slide cooldown meter, just above the stamina bar: fills back up as
+	-- the slide recharges.
+	local slideBack = Instance.new("Frame")
+	slideBack.Name = "SlideMeter"
+	slideBack.AnchorPoint = Vector2.new(0.5, 1)
+	slideBack.Position = UDim2.fromScale(0.5, 0.94)
+	slideBack.Size = UDim2.fromScale(0.12, 0.012)
+	slideBack.BackgroundColor3 = PANEL_COLOR
+	slideBack.BackgroundTransparency = 0.25
+	corner(slideBack, 0.5)
+	local slideMeter = Instance.new("Frame")
+	slideMeter.Name = "Fill"
+	slideMeter.Size = UDim2.fromScale(1, 1)
+	slideMeter.BackgroundColor3 = SLIDE_READY_COLOR
+	slideMeter.BorderSizePixel = 0
+	corner(slideMeter, 0.5)
+	slideMeter.Parent = slideBack
+	local slideCaption = textLabel(slideBack, "Caption", UDim2.fromScale(1, 1.8), 14)
+	slideCaption.AnchorPoint = Vector2.new(0.5, 1)
+	slideCaption.Position = UDim2.fromScale(0.5, -0.2)
+	slideCaption.Text = "SLIDE [C]"
+	slideCaption.TextStrokeTransparency = 0.4
+	slideBack.Parent = gui
+
 	gui.Parent = localPlayer:WaitForChild("PlayerGui")
 
 	return {
@@ -296,6 +324,7 @@ local function buildGui(): Refs
 		slideScale = slide.scale,
 		slideFill = slide.fill,
 		staminaFill = staminaFill,
+		slideMeter = slideMeter,
 	}
 end
 
@@ -342,6 +371,8 @@ local function noticeText(notice: Types.Notice): string?
 		return "Parcel returned to center"
 	elseif notice.kind == "RoundStart" then
 		return "GO! First to " .. Config.SCORE_TO_WIN .. " deliveries"
+	elseif notice.kind == "Go" then
+		return "GO!"
 	elseif notice.kind == "RoundEnd" then
 		return if notice.team then teamName(notice.team) .. " WINS!" else "It's a draw!"
 	end
@@ -370,8 +401,15 @@ local function renderTimer()
 	if not current then
 		return
 	end
-	if current.phaseEndsAt > 0 then
-		refs.timerLabel.Text = formatTime(current.phaseEndsAt - Workspace:GetServerTimeNow())
+	local now = Workspace:GetServerTimeNow()
+	if current.lockedUntil > now then
+		-- Round clock is paused during kickoff; show the frozen value.
+		refs.timerLabel.Text = if current.phaseEndsAt > 0
+			then formatTime(current.phaseEndsAt - current.lockedUntil)
+			else formatTime(Config.ROUND_SECONDS)
+		refs.statusLabel.Text = "Get ready! GO in " .. math.ceil(current.lockedUntil - now)
+	elseif current.phaseEndsAt > 0 then
+		refs.timerLabel.Text = formatTime(current.phaseEndsAt - now)
 	else
 		refs.timerLabel.Text = "--:--"
 	end
@@ -380,8 +418,8 @@ end
 local function statusText(current: Types.MatchState): string
 	if current.phase == "Waiting" then
 		return "Waiting for players..."
-	elseif current.phase == "Intermission" then
-		return "Next round starting soon"
+	elseif current.phase == "Lobby" then
+		return "In the lobby. Next game starting soon"
 	elseif current.phase == "Results" then
 		return "Round over"
 	end
@@ -402,7 +440,7 @@ end
 
 local PHASE_TITLES: { [Types.Phase]: string } = {
 	Waiting = "WAITING",
-	Intermission = "NEXT ROUND",
+	Lobby = "LOBBY",
 	Playing = "DELIVER!",
 	Results = "RESULTS",
 }
@@ -470,6 +508,24 @@ end
 local function onSlideCooldown(seconds: number)
 	pop(refs.slideScale)
 	slideCooldownTween = drainFill(refs.slideFill, seconds, slideCooldownTween)
+	if slideMeterTween then
+		slideMeterTween:Cancel()
+	end
+	local meter = refs.slideMeter
+	meter.Size = UDim2.fromScale(0, 1)
+	meter.BackgroundColor3 = SLIDE_CHARGING_COLOR
+	local tween = TweenService:Create(
+		meter,
+		TweenInfo.new(seconds, Enum.EasingStyle.Linear),
+		{ Size = UDim2.fromScale(1, 1) }
+	)
+	tween.Completed:Once(function(playback)
+		if playback == Enum.PlaybackState.Completed then
+			meter.BackgroundColor3 = SLIDE_READY_COLOR
+		end
+	end)
+	slideMeterTween = tween
+	tween:Play()
 end
 
 local function renderStamina()

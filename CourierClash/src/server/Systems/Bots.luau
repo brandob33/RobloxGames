@@ -4,6 +4,7 @@
 -- and cooldown); they just get their inputs from a simple brain here.
 
 local Players = game:GetService("Players")
+local PhysicsService = game:GetService("PhysicsService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -53,7 +54,14 @@ local IDLE_ANIMATION = "rbxassetid://507766666"
 local RUN_ANIMATION = "rbxassetid://507767714"
 local RUN_ANIMATION_SPEED = 16
 
+-- Bots don't collide with each other (no piling up or standing on heads).
+local BOT_COLLISION_GROUP = "CourierClashBots"
+-- Obstacles at most this tall are jumped; taller ones are walked around.
+local JUMPABLE_HEIGHT = 4
+local PROBE_DISTANCE = 5
+
 local brains: { [Agent]: Brain } = {}
+local obstacleParams = RaycastParams.new()
 local botFolder: Folder
 local nextBotNumber = 0
 local random = Random.new()
@@ -129,7 +137,11 @@ local function animate(brain: Brain, root: BasePart)
 	end
 	local velocity = root.AssemblyLinearVelocity
 	local speed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
-	if speed > 1.5 then
+	local agent = brain.agent
+	if Agents.isSliding(agent) or Agents.isDiving(agent) then
+		-- Hold the pose still; the slide/dive pose is drawn on clients.
+		run:AdjustSpeed(0)
+	elseif speed > 1.5 then
 		if not run.IsPlaying then
 			run:Play(0.15)
 		end
@@ -160,8 +172,13 @@ local function spawnBot(brain: Brain)
 		brain.spawning = false
 		return
 	end
-	local position = Arena.spawnPosition(agent.team, brain.slot)
-	rig:PivotTo(CFrame.lookAt(position, Vector3.new(0, position.Y, 0)))
+	-- Match hands out box spots, so a respawn never lands on a teammate.
+	rig:PivotTo(Arena.spawnCFrame(agent.team, Match.claimSlot(agent)))
+	for _, descendant in rig:GetDescendants() do
+		if descendant:IsA("BasePart") then
+			descendant.CollisionGroup = BOT_COLLISION_GROUP
+		end
+	end
 	rig.Parent = botFolder
 
 	local root = rig:FindFirstChild("HumanoidRootPart")
@@ -227,7 +244,9 @@ local function removeBot(agent: Agent)
 end
 
 local function rebalance()
-	local wanted = MatchLogic.botsForTeams(Agents.humanCounts(), Config.TEAM_SIZE)
+	local wanted = if Config.FILL_WITH_BOTS
+		then MatchLogic.botsForTeams(Agents.humanCounts(), Config.TEAM_SIZE)
+		else { Ember = 0, Tide = 0 }
 	for _, team in Config.TEAM_IDS do
 		local current: { Agent } = {}
 		for _, agent in Agents.bots() do
@@ -352,14 +371,24 @@ local function steer(
 	local moved = flat(position - brain.lastPosition).Magnitude
 	brain.lastPosition = position
 
-	-- Stuck on a crate or another courier: jump, then sidestep.
+	-- Stuck: jump only if a low obstacle is in front, otherwise (a tall
+	-- pillar, or another courier) step around it. Jumping on people is
+	-- what made bots stack.
 	if toTarget.Magnitude > 4 and moved < 0.5 and not Agents.isStunned(brain.agent) then
 		brain.stuckTicks += 1
 	else
 		brain.stuckTicks = 0
 	end
-	if brain.stuckTicks >= 2 then
-		humanoid.Jump = true
+	if brain.stuckTicks >= 2 and toTarget.Magnitude > 0.01 then
+		-- Probe at knee height so low hedges and crates are seen.
+		local knee = Vector3.new(position.X, 1.2, position.Z)
+		local hit = Workspace:Raycast(knee, toTarget.Unit * PROBE_DISTANCE, obstacleParams)
+		local part = hit and hit.Instance
+		if part and part:IsA("BasePart") and part.Size.Y <= JUMPABLE_HEIGHT then
+			humanoid.Jump = true
+		else
+			brain.stuckTicks = 4
+		end
 	end
 	if brain.stuckTicks >= 4 then
 		brain.sidestepUntil = now + 0.8
@@ -389,7 +418,13 @@ local function think(brain: Brain, now: number)
 		return
 	end
 	animate(brain, root)
-	if Match.getPhase() ~= "Playing" or Agents.isStunned(agent) then
+	if Agents.isDiving(agent) then
+		-- Lunge forward, then lie still until the dive ends.
+		local lunging = os.clock() < agent.diveLungeUntil
+		humanoid:MoveTo(if lunging then position + root.CFrame.LookVector * 12 else position)
+		return
+	end
+	if Match.getPhase() ~= "Playing" or Match.isLocked() or Agents.isStunned(agent) then
 		Sprint.setWanted(agent, false)
 		humanoid:MoveTo(position)
 		return
@@ -402,6 +437,10 @@ local function think(brain: Brain, now: number)
 end
 
 function Bots.init()
+	if not PhysicsService:IsCollisionGroupRegistered(BOT_COLLISION_GROUP) then
+		PhysicsService:RegisterCollisionGroup(BOT_COLLISION_GROUP)
+	end
+	PhysicsService:CollisionGroupSetCollidable(BOT_COLLISION_GROUP, BOT_COLLISION_GROUP, false)
 	botFolder = Instance.new("Folder")
 	botFolder.Name = "CourierClashBots"
 	botFolder.Parent = Workspace
@@ -409,15 +448,19 @@ function Bots.init()
 	Agents.HumansChanged.connect(function()
 		rebalance()
 	end)
+	-- Match's kickoff places everyone, so a new round only needs the counts.
 	Match.RoundStarting.connect(function()
 		rebalance()
-		for _, brain in brains do
-			task.spawn(spawnBot, brain)
-		end
 	end)
 end
 
 function Bots.start()
+	-- Arena is built in its init(), which has run by now.
+	obstacleParams.FilterType = Enum.RaycastFilterType.Include
+	local arena = Workspace:FindFirstChild("CourierClashArena")
+	if arena then
+		obstacleParams.FilterDescendantsInstances = { arena }
+	end
 	while true do
 		task.wait(THINK_INTERVAL)
 		local now = os.clock()
