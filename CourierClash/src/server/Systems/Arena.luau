@@ -28,7 +28,10 @@ local GATE_CLOSED_TRANSPARENCY = 0.6
 local LAYOUT_SCALE_X = HALF_X / 180
 local LAYOUT_SCALE_Z = HALF_Z / 120
 
-Arena.PARCEL_HOME = Vector3.new(0, 4, 0)
+-- Package homes: one on each side of the field (left and right of the
+-- center line, as seen from either base).
+local PACKAGE_HOME_Z = HALF_Z * 0.5
+local PACKAGE_HOME_Y = 4
 
 -- Lobby: a walled platform beside the field where players wait between
 -- games (the shop will live here).
@@ -89,13 +92,25 @@ function Arena.dropZoneCenter(team: TeamId): Vector3
 	return Vector3.new(side(team) * ZONE_X, 0, 0)
 end
 
--- Spawn spot for the n-th courier of a team: two rows of ten inside the
--- spawn box, facing the field.
+-- Where package n (1 = left, 2 = right) rests between plays.
+function Arena.packageHome(index: number): Vector3
+	local count = Config.PACKAGE_COUNT
+	local z = if count <= 1
+		then 0
+		else -PACKAGE_HOME_Z + (index - 1) * (2 * PACKAGE_HOME_Z / (count - 1))
+	return Vector3.new(0, PACKAGE_HOME_Y, z)
+end
+
+-- Spawn spot for the n-th courier of a team: a row (two if the team is
+-- big) centered in the spawn box, facing the field.
+local SPAWN_SPACING = 9
+local SPAWN_PER_ROW = math.min(Config.TEAM_SIZE, 6)
 function Arena.spawnCFrame(team: TeamId, index: number): CFrame
-	local column = (index - 1) % 10
-	local row = math.floor((index - 1) / 10) % 2
+	local column = (index - 1) % SPAWN_PER_ROW
+	local row = math.floor((index - 1) / SPAWN_PER_ROW) % 2
 	local x = side(team) * (HALF_X - 9 - row * 10)
-	local position = Vector3.new(x, 4, (column - 4.5) * 9)
+	local z = (column - (SPAWN_PER_ROW - 1) / 2) * SPAWN_SPACING
+	local position = Vector3.new(x, 4, z)
 	return CFrame.lookAt(position, Vector3.new(0, position.Y, position.Z))
 end
 
@@ -292,7 +307,16 @@ local function build()
 	)
 	stripe.CanCollide = false
 
-	makePart("Pedestal", Vector3.new(6, 1, 6), CFrame.new(0, 0.5, 0), STRIPE_COLOR, folder)
+	for i = 1, Config.PACKAGE_COUNT do
+		local home = Arena.packageHome(i)
+		makePart(
+			"Pedestal" .. i,
+			Vector3.new(6, 1, 6),
+			CFrame.new(home.X, 0.5, home.Z),
+			STRIPE_COLOR,
+			folder
+		)
+	end
 
 	-- Boundary walls
 	local longWall = Vector3.new(Config.ARENA_LENGTH, WALL_HEIGHT, 2)

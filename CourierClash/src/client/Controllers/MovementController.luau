@@ -11,6 +11,10 @@
 --
 -- A tackle is a committed dive (TackleController calls dive()): a short
 -- lunge forward, then you're down and can't move, jump, sprint or slide.
+--
+-- When an opponent shoves you the server sends "Shoved" with a direction;
+-- you're pushed that way for SHOVE_KNOCKBACK_SECONDS (your client moves
+-- your body, the server's Movement check allows for it).
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -40,7 +44,6 @@ local FOV_BASE = 70
 local FOV_SPRINT = 80
 local FOV_SLIDE = 88
 local FOV_RESPONSE = 10 -- higher = snappier FOV easing
-local SLIDE_HIP_DROP = 1.1
 local SLIDE_CAMERA_OFFSET = Vector3.new(0, -1.6, 0)
 local CAMERA_TWEEN = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local MOVING_SPEED = 2
@@ -59,8 +62,12 @@ local jukeDirection = Vector3.zero
 local diveLungeEndsAt = 0
 local diveEndsAt = 0
 local diveDirection = Vector3.zero
+local knockbackEndsAt = 0
+local knockbackDirection = Vector3.zero
 local jumpLocked = false
-local restoreHipHeight: number? = nil
+
+-- True while the slide's camera dip is applied (so it's undone once).
+local cameraDipped = false
 
 local humanoid: Humanoid? = nil
 local root: BasePart? = nil
@@ -106,6 +113,9 @@ local function sprintActive(now: number): boolean
 end
 
 local function walkSpeed(now: number): number
+	if now < knockbackEndsAt then
+		return Config.SHOVE_SPEED
+	end
 	if characterFlag("Stunned") then
 		return 0
 	end
@@ -131,14 +141,11 @@ end
 
 local function endSlide()
 	slideEndsAt = 0
+	cameraDipped = false
 	local currentHumanoid = humanoid
 	if currentHumanoid then
-		if restoreHipHeight then
-			currentHumanoid.HipHeight = restoreHipHeight
-		end
 		TweenService:Create(currentHumanoid, CAMERA_TWEEN, { CameraOffset = Vector3.zero }):Play()
 	end
-	restoreHipHeight = nil
 end
 
 local function setJumpLocked(locked: boolean)
@@ -265,8 +272,7 @@ function MovementController.slide(): boolean
 	slideEndsAt = now + Config.SLIDE_SECONDS
 	slideReadyAt = now + Config.SLIDE_COOLDOWN
 
-	restoreHipHeight = currentHumanoid.HipHeight
-	currentHumanoid.HipHeight = math.max(0, currentHumanoid.HipHeight - SLIDE_HIP_DROP)
+	cameraDipped = true
 	TweenService:Create(currentHumanoid, CAMERA_TWEEN, { CameraOffset = SLIDE_CAMERA_OFFSET })
 		:Play()
 
@@ -297,8 +303,19 @@ local function onPreSimulation()
 			currentRoot.AssemblyLinearVelocity =
 				Vector3.new(slideDirection.X * speed, velocity.Y, slideDirection.Z * speed)
 		end
-	elseif restoreHipHeight then
+	elseif cameraDipped then
 		endSlide()
+	end
+
+	if now < knockbackEndsAt then
+		-- Overrides the stick/keys for this step so the push can't be steered.
+		currentHumanoid:Move(knockbackDirection, false)
+		local velocity = currentRoot.AssemblyLinearVelocity
+		currentRoot.AssemblyLinearVelocity = Vector3.new(
+			knockbackDirection.X * Config.SHOVE_SPEED,
+			velocity.Y,
+			knockbackDirection.Z * Config.SHOVE_SPEED
+		)
 	end
 
 	if isJuking(now) then
@@ -353,7 +370,8 @@ end
 local function onCharacterAdded(character: Model)
 	slideEndsAt = 0
 	jukeEndsAt = 0
-	restoreHipHeight = nil
+	cameraDipped = false
+	knockbackEndsAt = 0
 	diveLungeEndsAt = 0
 	diveEndsAt = 0
 	jumpLocked = false
@@ -399,6 +417,24 @@ function MovementController.init()
 			end
 			jukeEndsAt = 0
 		end
+	end)
+
+	Net.on("Shoved", function(direction: unknown)
+		if typeof(direction) ~= "Vector3" then
+			return
+		end
+		local push = flat(direction)
+		-- NaN fails the comparison, so it's rejected along with zero and inf.
+		if not (push.Magnitude > 0.01 and push.Magnitude < math.huge) then
+			return
+		end
+		local now = os.clock()
+		if isSliding(now) then
+			endSlide()
+		end
+		jukeEndsAt = 0
+		knockbackDirection = push.Unit
+		knockbackEndsAt = now + Config.SHOVE_KNOCKBACK_SECONDS
 	end)
 
 	localPlayer.CharacterAdded:Connect(onCharacterAdded)

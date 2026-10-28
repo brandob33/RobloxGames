@@ -10,8 +10,17 @@ export type TeamScores = { Ember: number, Tide: number }
 
 export type Phase = "Waiting" | "Lobby" | "Playing" | "Results"
 
--- Home: resting at the center pedestal. Loose: dropped somewhere on the field.
+-- Home: resting on its pedestal. Loose: dropped somewhere on the field.
 export type ParcelStatus = "Home" | "Carried" | "Loose"
+
+-- One package as the HUD sees it.
+export type PackageView = {
+	status: ParcelStatus,
+	carrierName: string?,
+	carrierTeam: TeamId?,
+	-- UserId of a human carrier, nil for bots
+	carrierUserId: number?,
+}
 
 export type Winner = TeamId | "Draw"
 
@@ -22,11 +31,8 @@ export type MatchState = {
 	phaseEndsAt: number,
 	scores: TeamScores,
 	scoreToWin: number,
-	parcelStatus: ParcelStatus,
-	carrierName: string?,
-	carrierTeam: TeamId?,
-	-- UserId of a human carrier, nil for bots
-	carrierUserId: number?,
+	-- One entry per package, left to right.
+	packages: { PackageView },
 	winner: Winner?,
 	-- workspace:GetServerTimeNow() when the kickoff lock ends; 0 = not locked
 	lockedUntil: number,

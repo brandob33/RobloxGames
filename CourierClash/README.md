@@ -2,22 +2,24 @@
 
 (Code folder and module names still say `CourierClash`; only the player-facing name changed.)
 
-Two teams, one package. Grab the package from the center of the field, carry
-it into your team's drop zone to score, and tackle whoever is carrying it
-for the other team. First team to 3 deliveries (or the most when the 3-minute
+Two teams, two packages: one on the left of the center line, one on the
+right. Grab one, carry it into your team's drop zone to score, tackle
+whoever is carrying one for the other team, and shove defenders out of
+your carrier's way. First team to 3 deliveries (or the most when the 3-minute
 clock runs out) wins the round. Empty slots are filled with bots so it plays
 fine with one person; real players always take priority, and
 `FILL_WITH_BOTS = false` in Config turns bots off entirely.
 
 | | |
 | --- | --- |
-| Teams | **Ember** (orange, west end) vs **Tide** (blue, east end), 10 couriers each |
-| Pick up | Walk into the package. You get a 1 s speed burst and 2 s where you can't be tackled (force-field bubble), then carriers run slower (14 vs 18 studs/s) and can't sprint or slide |
+| Teams | **Ember** (orange, west end) vs **Tide** (blue, east end), 5 couriers each, on a 260 × 170 field |
+| Pick up | Walk into a package (you can carry one at a time). You get a 1 s speed burst and 2 s where you can't be tackled (force-field bubble), then carriers run slower (14 vs 18 studs/s) and can't sprint or slide |
 | Sprint | Hold `Shift` (gamepad `L2`, touch: Sprint button toggles). 27 studs/s. Uses stamina. Not while carrying |
-| Slide | `C` or `Ctrl` (gamepad `B`, touch: Slide button). A quick, flat, feet-first slide; tackles miss you mid-slide. Free, just a 1.6 s cooldown (shown on the HUD) |
+| Slide | `C` or `Ctrl` (gamepad `B`, touch: Slide button). A quick, fully flat, feet-first slide with wind streaks and dust; tackles and shoves miss you mid-slide. Free, just a 1.6 s cooldown (shown on the HUD) |
 | Juke | The slide key while carrying: a quick dash the way you're steering, 2.2 s cooldown. No tackle immunity, so time it |
 | Score | Carry it into your own glowing drop zone |
 | Tackle | `F`, gamepad `R1`, or the on-screen button. A committed, aimed dive: it only lands if your body reaches the carrier during the lunge. Miss and you're on the ground for 1 s. 2.5 s cooldown. Knocks the package loose and stuns the carrier for 1.25 s |
+| Shove | `E`, gamepad `X`, or the on-screen button. Pushes the nearest opponent in front of you (within 7 studs) back and staggers them for a moment, then they can't be shoved again for 1 s. 1.8 s cooldown. Not while carrying, and a carrier still in their force-field bubble can't be shoved |
 | Kickoff | At the start and after every delivery, everyone goes back to their spawn box behind a force-field gate for an 8 s countdown |
 | Round | Lobby (20 s, set `LOBBY_SECONDS = 60` for release) → 3 min round (first to 3) → 8 s results → lobby |
 
@@ -95,6 +97,7 @@ src/
 │       ├── Parcel.luau       pickup, carry, tackle, delivery
 │       ├── Movement.luau     server-side speed/teleport check for players
 │       ├── Sprint.luau       stamina, sprint and slide rules
+│       ├── Shove.luau        shove rules and knockback
 │       ├── Match.luau        round loop, scores, state broadcast
 │       ├── Bots.luau         bot fill + AI
 │       ├── Avatars.luau      same blocky R15 body for everyone
@@ -105,10 +108,11 @@ src/
     ├── init.client.luau
     ├── Net.luau
     └── Controllers/
-        ├── HudController.luau     score bar, timer, banners, tackle button
+        ├── HudController.luau     score bar, timer, banners, tackle/shove buttons
         ├── TackleController.luau  input + cooldown
+        ├── ShoveController.luau   input + cooldown
         ├── MovementController.luau sprint/slide/dive input, prediction, FOV
-        ├── PoseController.luau    slide and dive body poses
+        ├── PoseController.luau    slide, dive and shove poses, slide wind
         ├── ShopController.luau    coin counter + shop screen
         └── DevKeys.luau           Studio-only QA keys
 ```
@@ -117,9 +121,11 @@ src/
 
 - The server decides pickups, tackles and deliveries from positions it sees;
   the client never reports them.
-- The only gameplay remote, `Tackle`, takes no arguments. The server picks
-  the target (the enemy carrier), checks range and cooldown, and rate-limits
-  the remote.
+- The gameplay remotes, `Tackle` and `Shove`, take no arguments. The server
+  picks the target (an enemy carrier, or the nearest opponent in front for a
+  shove), checks range and cooldown, and rate-limits the remote. A shoved
+  player's own client moves them back; the movement check allows that speed
+  only while the knockback lasts.
 - Players simulate their own characters, so a client can ignore WalkSpeed or
   teleport. `Movement.luau` checks every player's distance over a rolling
   1-second window against the speed they're allowed (carrying, stunned or

@@ -1,20 +1,22 @@
 --!strict
--- Slide and dive animations, drawn on every client for every courier
--- (players and bots). Purely visual: nothing here touches physics or
--- replicates.
+-- Slide, dive and shove animations, drawn on every client for every
+-- courier (players and bots). Purely visual: nothing here touches physics
+-- or replicates.
 --
--- Slide: flat on your back, feet-first. Lead leg stretched out, the other
---        tucked under, one hand trailing on the ground, the other up.
+-- Slide: fully flat on your back, feet-first. Lead leg stretched out, the
+--        other tucked under, one hand trailing on the ground, the other up.
+--        Wind streaks and a dust trail follow you while it lasts.
 -- Dive:  a launch and belly-flop. The body tips forward to flat over the
 --        lunge, arms stretched out ahead, head up, and lands on the ground,
 --        then gets back up as the dive ends.
+-- Shove: both arms punched straight out, leaning into it.
 --
 -- The whole body tilts by rotating the root joint's C0 (in root-part space,
 -- so it works for R15 and R6), and on R15 the limbs are posed by overriding
 -- each joint's animation Transform so the run cycle doesn't flail
 -- underneath. Your own pose follows MovementController's prediction so it
 -- starts on the key press; everyone else's follows the replicated
--- Sliding / Diving attributes.
+-- Sliding / Diving / Shoving attributes.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -23,10 +25,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
 local MovementController = require(script.Parent.MovementController)
+local ShoveController = require(script.Parent.ShoveController)
 
 local PoseController = {}
 
-type PoseKind = "Slide" | "Dive"
+type PoseKind = "Slide" | "Dive" | "Shove"
 
 type Entry = {
 	root: Motor6D,
@@ -37,6 +40,7 @@ type Entry = {
 	kind: PoseKind?,
 	startedAt: number, -- os.clock() when the current pose began
 	joints: { [string]: CFrame }, -- this frame's limb targets
+	wind: { Attachment }?, -- slide wind and dust, while sliding
 }
 
 -- R15 joint Transforms (radians around each joint's X axis: + swings a limb
@@ -63,17 +67,24 @@ local DIVE_JOINTS: { [string]: CFrame } = {
 	RightKnee = CFrame.Angles(math.rad(-15), 0, 0),
 	LeftKnee = CFrame.Angles(math.rad(-15), 0, 0),
 }
+local SHOVE_JOINTS: { [string]: CFrame } = {
+	RightShoulder = CFrame.Angles(math.rad(95), 0, 0),
+	LeftShoulder = CFrame.Angles(math.rad(95), 0, 0),
+	RightElbow = CFrame.Angles(math.rad(5), 0, 0),
+	LeftElbow = CFrame.Angles(math.rad(5), 0, 0),
+}
 local NO_JOINTS: { [string]: CFrame } = {}
 
-local SLIDE_LEAN = math.rad(80) -- almost flat on your back
-local SLIDE_DROP = 1.9 -- roughly down onto the ground
--- Your own slide also lowers HipHeight (MovementController), so sink less.
-local SLIDE_LOCAL_DROP = 0.8
+local SLIDE_LEAN = math.rad(90) -- fully flat on your back
+local SLIDE_DROP = 2.3 -- root height above the ground, roughly: lie on it
+-- The slide itself is short; hold the pose a little longer so it reads.
+local SLIDE_POSE_HOLD = 0.4
+local SHOVE_LEAN = math.rad(-18) -- leaning into the push
 local DIVE_LEAN = math.rad(-90) -- flat, face down
 local DIVE_LAUNCH_LEAN = math.rad(-35) -- leaning into the jump at the start
 local DIVE_DROP = 2.3 -- root height above the ground, roughly: lie on it
 
-local BLEND_IN = 22 -- higher = snappier
+local BLEND_IN = 30 -- higher = snappier
 local BLEND_OUT = 10
 local BOT_FOLDER_NAME = "CourierClashBots"
 
@@ -105,10 +116,104 @@ local function findRootJoint(character: Model): (Motor6D?, boolean)
 	return nil, false
 end
 
+-- Wind streaks are thin trails between attachment pairs (offsets in root
+-- space; the body lies about SLIDE_DROP below the root while sliding).
+local WIND_STREAKS: { Vector3 } = {
+	Vector3.new(-1.7, -1.6, 0.5),
+	Vector3.new(1.7, -1.6, 0.5),
+	Vector3.new(-1.1, -0.9, -1.2),
+	Vector3.new(1.1, -0.9, -1.2),
+	Vector3.new(0, -0.6, 1.8),
+}
+local WIND_WIDTH = 0.12
+local WIND_LIFETIME = 0.2
+local DUST_TEXTURE = "rbxasset://textures/particles/smoke_main.dds"
+local DUST_OFFSET = Vector3.new(0, -2.8, 0.8)
+local WIND_CLEANUP_SECONDS = 0.6
+
+local function startWind(entry: Entry, character: Model)
+	local rootPart = character:FindFirstChild("HumanoidRootPart")
+	if entry.wind or not rootPart or not rootPart:IsA("BasePart") then
+		return
+	end
+	local parts: { Attachment } = {}
+	for _, offset in WIND_STREAKS do
+		local a0 = Instance.new("Attachment")
+		a0.Name = "SlideWind"
+		a0.Position = offset
+		local a1 = Instance.new("Attachment")
+		a1.Name = "SlideWind"
+		a1.Position = offset + Vector3.new(0, WIND_WIDTH, 0)
+		local trail = Instance.new("Trail")
+		trail.Attachment0 = a0
+		trail.Attachment1 = a1
+		trail.Lifetime = WIND_LIFETIME
+		trail.MinLength = 0
+		trail.FaceCamera = true
+		trail.LightEmission = 0.6
+		trail.Color = ColorSequence.new(Color3.new(1, 1, 1))
+		trail.Transparency = NumberSequence.new(0.25, 1)
+		trail.WidthScale = NumberSequence.new(1, 0)
+		trail.Parent = a0
+		table.insert(parts, a0)
+		table.insert(parts, a1)
+	end
+	local dustAttachment = Instance.new("Attachment")
+	dustAttachment.Name = "SlideWind"
+	dustAttachment.Position = DUST_OFFSET
+	local dust = Instance.new("ParticleEmitter")
+	dust.Texture = DUST_TEXTURE
+	dust.Color = ColorSequence.new(Color3.fromRGB(214, 206, 186))
+	dust.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.8),
+		NumberSequenceKeypoint.new(1, 2.4),
+	})
+	dust.Transparency = NumberSequence.new(0.35, 1)
+	dust.Lifetime = NumberRange.new(0.3, 0.5)
+	dust.Rate = 45
+	dust.Speed = NumberRange.new(3, 6)
+	dust.SpreadAngle = Vector2.new(35, 35)
+	dust.EmissionDirection = Enum.NormalId.Back
+	dust.Acceleration = Vector3.new(0, 3, 0)
+	dust.Parent = dustAttachment
+	table.insert(parts, dustAttachment)
+	for _, part in parts do
+		part.Parent = rootPart
+	end
+	dust:Emit(8)
+	entry.wind = parts
+end
+
+local function stopWind(entry: Entry)
+	local parts = entry.wind
+	if not parts then
+		return
+	end
+	entry.wind = nil
+	for _, part in parts do
+		for _, effect in part:GetChildren() do
+			if effect:IsA("Trail") or effect:IsA("ParticleEmitter") then
+				effect.Enabled = false
+			end
+		end
+	end
+	-- Let the last streaks and dust fade out before removing them.
+	task.delay(WIND_CLEANUP_SECONDS, function()
+		for _, part in parts do
+			part:Destroy()
+		end
+	end)
+end
+
 local function getEntry(character: Model): Entry?
 	local entry = entries[character]
-	if entry and entry.root.Parent then
+	-- The rig can be rebuilt (avatar applied, respawn); then find the new
+	-- root joint instead of posing a detached one.
+	if entry and entry.root.Parent and entry.root:IsDescendantOf(character) then
 		return entry
+	end
+	if entry then
+		stopWind(entry)
 	end
 	local root, isR15 = findRootJoint(character)
 	if not root then
@@ -123,6 +228,7 @@ local function getEntry(character: Model): Entry?
 		kind = nil,
 		startedAt = 0,
 		joints = NO_JOINTS,
+		wind = nil,
 	}
 	entries[character] = newEntry
 	return newEntry
@@ -134,6 +240,8 @@ local function wantedPose(character: Model): PoseKind?
 			return "Dive"
 		elseif MovementController.isSliding() then
 			return "Slide"
+		elseif ShoveController.isShoving() then
+			return "Shove"
 		end
 		return nil
 	end
@@ -141,6 +249,8 @@ local function wantedPose(character: Model): PoseKind?
 		return "Dive"
 	elseif character:GetAttribute("Sliding") == true then
 		return "Slide"
+	elseif character:GetAttribute("Shoving") == true then
+		return "Shove"
 	end
 	return nil
 end
@@ -151,14 +261,11 @@ local function smoothstep(x: number): number
 end
 
 -- Body tilt and drop for this moment of the pose.
-local function bodyPose(
-	entry: Entry,
-	kind: PoseKind,
-	isLocal: boolean,
-	now: number
-): (number, number)
+local function bodyPose(entry: Entry, kind: PoseKind, now: number): (number, number)
 	if kind == "Slide" then
-		return SLIDE_LEAN, if isLocal then SLIDE_LOCAL_DROP else SLIDE_DROP
+		return SLIDE_LEAN, SLIDE_DROP
+	elseif kind == "Shove" then
+		return SHOVE_LEAN, 0
 	end
 	-- Dive: lean into the launch, tip to flat over the lunge, land.
 	local progress = (now - entry.startedAt) / Config.DIVE_LUNGE_SECONDS
@@ -181,7 +288,15 @@ end
 local function update(character: Model, dt: number, now: number)
 	seen[character] = true
 	local wanted = wantedPose(character)
-	local entry = entries[character]
+	local entry: Entry? = entries[character]
+	if
+		entry
+		and entry.kind == "Slide"
+		and (wanted == nil or wanted == "Shove")
+		and now - entry.startedAt < SLIDE_POSE_HOLD
+	then
+		wanted = "Slide"
+	end
 	if not wanted and (not entry or entry.alpha <= 0) then
 		return
 	end
@@ -192,11 +307,18 @@ local function update(character: Model, dt: number, now: number)
 
 	if wanted and wanted ~= entry.kind then
 		if entry.alpha <= 0 then
-			-- Fresh pose: pick up any joints added since we last looked.
+			-- Fresh pose: pick up any joints added since we last looked, and
+			-- the root joint's rest offset in case the rig was rebuilt.
 			entry.motors = collectMotors(character, entry.root)
+			entry.baseC0 = entry.root.C0
 		end
 		entry.kind = wanted
 		entry.startedAt = now
+	end
+	if wanted == "Slide" then
+		startWind(entry, character)
+	elseif entry.wind then
+		stopWind(entry)
 	end
 	local target = if wanted then 1 else 0
 	local rate = if wanted then BLEND_IN else BLEND_OUT
@@ -217,7 +339,7 @@ local function update(character: Model, dt: number, now: number)
 		return
 	end
 	local alpha = entry.alpha
-	local lean, drop = bodyPose(entry, kind, character == localPlayer.Character, now)
+	local lean, drop = bodyPose(entry, kind, now)
 	-- Rotate in root-part space (pre-multiply) so R15 and R6 tilt the same way.
 	entry.root.C0 = CFrame.new(0, -drop * alpha, 0)
 		* CFrame.Angles(lean * alpha, 0, 0)
@@ -226,6 +348,7 @@ local function update(character: Model, dt: number, now: number)
 	entry.joints = if not entry.isR15
 		then NO_JOINTS
 		elseif kind == "Dive" then DIVE_JOINTS
+		elseif kind == "Shove" then SHOVE_JOINTS
 		else SLIDE_JOINTS
 	applyJoints(entry)
 end
@@ -248,8 +371,9 @@ local function step(dt: number)
 		end
 	end
 	-- Forget characters that despawned.
-	for character in entries do
+	for character, entry in entries do
 		if not seen[character] then
+			stopWind(entry)
 			entries[character] = nil
 		end
 	end
