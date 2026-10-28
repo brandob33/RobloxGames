@@ -109,7 +109,7 @@ local function buildParcel(): Part
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.fromScale(1, 1)
 	label.BackgroundTransparency = 1
-	label.Text = "PARCEL"
+	label.Text = "PACKAGE"
 	label.TextScaled = true
 	label.TextColor3 = PARCEL_COLOR
 	label.TextStrokeTransparency = 0.2

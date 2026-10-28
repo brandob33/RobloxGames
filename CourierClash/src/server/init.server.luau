@@ -25,4 +25,4 @@ for _, system in loaded do
 	end
 end
 
-print("[Courier Clash] server started")
+print("[Steal the Package] server started")

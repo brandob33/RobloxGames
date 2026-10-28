@@ -25,4 +25,4 @@ for _, controller in loaded do
 	end
 end
 
-print("[Courier Clash] client started")
+print("[Steal the Package] client started")

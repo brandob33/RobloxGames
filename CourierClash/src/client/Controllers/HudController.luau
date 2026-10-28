@@ -357,7 +357,7 @@ end
 local function noticeText(notice: Types.Notice): string?
 	local actor = notice.actorName or "Someone"
 	if notice.kind == "Pickup" then
-		return actor .. " grabbed the parcel!"
+		return actor .. " grabbed the package!"
 	elseif notice.kind == "Delivered" then
 		return actor
 			.. " delivered for "
@@ -368,7 +368,7 @@ local function noticeText(notice: Types.Notice): string?
 	elseif notice.kind == "Dodged" then
 		return actor .. " slid past " .. (notice.targetName or "a tackle") .. "!"
 	elseif notice.kind == "Returned" then
-		return "Parcel returned to center"
+		return "Package returned to center"
 	elseif notice.kind == "RoundStart" then
 		return "GO! First to " .. Config.SCORE_TO_WIN .. " deliveries"
 	elseif notice.kind == "Go" then
@@ -425,17 +425,17 @@ local function statusText(current: Types.MatchState): string
 	end
 	if current.parcelStatus == "Carried" then
 		if current.carrierUserId == localPlayer.UserId then
-			return "You have the parcel! Run it to your drop zone!"
+			return "You have the package! Run it to your drop zone!"
 		end
 		local who = current.carrierName or "Someone"
 		if current.carrierTeam and current.carrierTeam == myTeam() then
-			return who .. " has the parcel. Protect them!"
+			return who .. " has the package. Protect them!"
 		end
-		return who .. " has the parcel. Tackle them!"
+		return who .. " has the package. Tackle them!"
 	elseif current.parcelStatus == "Loose" then
-		return "The parcel is loose! Grab it!"
+		return "The package is loose! Grab it!"
 	end
-	return "Grab the parcel at the center!"
+	return "Grab the package at the center!"
 end
 
 local PHASE_TITLES: { [Types.Phase]: string } = {
