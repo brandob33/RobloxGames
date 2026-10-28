@@ -11,7 +11,8 @@ export type TeamScores = { Ember: number, Tide: number }
 export type Phase = "Waiting" | "Lobby" | "Playing" | "Results"
 
 -- Home: resting on its pedestal. Loose: dropped somewhere on the field.
-export type ParcelStatus = "Home" | "Carried" | "Loose"
+-- Delivered: scored this play and off the field until the next kickoff.
+export type ParcelStatus = "Home" | "Carried" | "Loose" | "Delivered"
 
 -- One package as the HUD sees it.
 export type PackageView = {

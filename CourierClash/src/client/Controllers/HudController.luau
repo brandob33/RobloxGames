@@ -438,7 +438,11 @@ local function statusText(current: Types.MatchState): string
 	local enemy: Types.PackageView? = nil
 	local friend: Types.PackageView? = nil
 	local loose = false
+	local inPlay = 0
 	for _, package in current.packages do
+		if package.status ~= "Delivered" then
+			inPlay += 1
+		end
 		if package.status == "Carried" then
 			if package.carrierUserId == localPlayer.UserId then
 				return "You have a package! Run it to your drop zone!"
@@ -457,6 +461,10 @@ local function statusText(current: Types.MatchState): string
 		return (friend.carrierName or "Someone") .. " has a package. Shove defenders away!"
 	elseif loose then
 		return "A package is loose! Grab it!"
+	elseif inPlay == 0 then
+		return "All packages delivered!"
+	elseif inPlay == 1 and #current.packages > 1 then
+		return "One package left! Grab it!"
 	end
 	return "Grab a package! One on the left, one on the right"
 end

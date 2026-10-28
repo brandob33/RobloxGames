@@ -1,7 +1,9 @@
 --!strict
 -- The packages: pickup, carrying, tackles and delivery. There are
 -- Config.PACKAGE_COUNT of them (one left, one right), each with its own
--- carrier; a courier carries at most one. Everything here is decided on the
+-- carrier; a courier carries at most one. A delivered package leaves the
+-- field and play goes on with the rest; once every package is delivered,
+-- Match runs the next kickoff and they all come back. Everything here is decided on the
 -- server from positions it can see — clients never report a pickup or a
 -- delivery. The only client input is the Tackle remote, which carries no
 -- arguments: the server picks the target and checks range.
@@ -170,6 +172,7 @@ end
 local function placeAt(package: Package, position: Vector3)
 	package.part.Anchored = true
 	package.part.CFrame = CFrame.new(position)
+	package.part.Parent = Workspace
 end
 
 local function attach(package: Package, agent: Agent, root: BasePart)
@@ -220,6 +223,29 @@ local function resetPackage(package: Package)
 	releaseCarrier(package)
 	placeAt(package, package.home)
 	setStatus(package, "Home")
+end
+
+-- Scored: take it off the field until the next kickoff.
+local function retirePackage(package: Package)
+	releaseCarrier(package)
+	package.part.Anchored = true
+	package.part.Parent = nil
+	setStatus(package, "Delivered")
+end
+
+-- True once every package has been delivered this play.
+function Parcel.allDelivered(): boolean
+	for _, package in packages do
+		if package.status ~= "Delivered" then
+			return false
+		end
+	end
+	return true
+end
+
+function Parcel.isDelivered(index: number): boolean
+	local package = packages[index]
+	return package ~= nil and package.status == "Delivered"
 end
 
 -- Put every package back on its pedestal.
@@ -292,7 +318,7 @@ function Parcel.forceGive(agent: Agent): boolean
 		return false
 	end
 	for _, package in packages do
-		if not package.carrier then
+		if not package.carrier and package.status ~= "Delivered" then
 			attach(package, agent, root)
 			return true
 		end
@@ -425,8 +451,8 @@ local function stepCarried(package: Package, agent: Agent)
 	end
 	package.lastCarrierPosition = root.Position
 	if inZone then
-		-- Reset first so the state Match broadcasts on scoring is clean.
-		resetPackage(package)
+		-- Retire first so the state Match broadcasts on scoring is clean.
+		retirePackage(package)
 		delivered.fire(agent)
 		notify({ kind = "Delivered", team = agent.team, actorName = agent.name })
 	end
@@ -469,14 +495,14 @@ end
 local function step()
 	local now = os.clock()
 	for _, package in packages do
-		-- A delivery stops play (Match runs a kickoff), so stop there.
+		-- The last delivery (or a winning one) stops play, so stop there.
 		if not active then
 			return
 		end
 		local agent = package.carrier
 		if package.status == "Carried" and agent then
 			stepCarried(package, agent)
-		else
+		elseif package.status ~= "Delivered" then
 			stepFree(package, now)
 		end
 	end

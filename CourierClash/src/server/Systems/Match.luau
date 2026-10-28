@@ -5,8 +5,9 @@
 --
 -- Players wait in the lobby between games. A round starts with a kickoff:
 -- everyone is placed in their team's spawn box, the gates close for
--- KICKOFF_SECONDS, then open. Every delivery triggers another kickoff, and
--- the round clock pauses while the gates are shut.
+-- KICKOFF_SECONDS, then open. A delivered package leaves the field and play
+-- goes on; once every package is delivered there's another kickoff. The
+-- round clock pauses while the gates are shut.
 
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -89,10 +90,10 @@ function Match.addScore(team: TeamId, amount: number)
 		return
 	end
 	MatchLogic.addTo(scores, team, amount)
-	-- Freeze the packages now rather than on the round loop's next poll; the
-	-- loop either ends the round or runs the next kickoff.
-	Parcel.setActive(false)
-	kickoffPending = true
+	if MatchLogic.isRoundOver(scores, Config.SCORE_TO_WIN, secondsLeft()) then
+		-- Freeze play now rather than on the round loop's next poll.
+		Parcel.setActive(false)
+	end
 	Match.broadcast()
 end
 
@@ -252,6 +253,12 @@ function Match.init()
 	end)
 	Parcel.Delivered.connect(function(agent)
 		Match.addScore(agent.team, 1)
+		-- Play goes on until every package is delivered; then everyone
+		-- goes back to their spawn box for the next kickoff.
+		if phase == "Playing" and Parcel.allDelivered() then
+			Parcel.setActive(false)
+			kickoffPending = true
+		end
 	end)
 	Agents.Removed.connect(function(agent)
 		slots[agent] = nil
