@@ -12,7 +12,7 @@ local TEAM_COLORS: { [Types.TeamId]: Color3 } = {
 }
 
 return table.freeze({
-	GAME_NAME = "Courier Clash",
+	GAME_NAME = "Steal the Package",
 
 	TEAM_IDS = TEAM_IDS,
 	TEAM_COLORS = TEAM_COLORS,

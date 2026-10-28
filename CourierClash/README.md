@@ -1,6 +1,8 @@
-# Courier Clash
+# Steal the Package
 
-Two teams, one parcel. Grab the parcel from the center of the field, carry
+(Code folder and module names still say `CourierClash`; only the player-facing name changed.)
+
+Two teams, one package. Grab the package from the center of the field, carry
 it into your team's drop zone to score, and tackle whoever is carrying it
 for the other team. First team to 3 deliveries (or the most when the 3-minute
 clock runs out) wins the round. Empty slots are filled with bots so it plays
@@ -10,11 +12,11 @@ fine with one person; real players always take priority, and
 | | |
 | --- | --- |
 | Teams | **Ember** (orange, west end) vs **Tide** (blue, east end), 10 couriers each |
-| Pick up | Walk into the parcel. You get a 1 s speed burst and 2 s where you can't be tackled (force-field bubble), then carriers run slower (14 vs 18 studs/s) |
+| Pick up | Walk into the package. You get a 1 s speed burst and 2 s where you can't be tackled (force-field bubble), then carriers run slower (14 vs 18 studs/s) |
 | Sprint | Hold `Shift` (gamepad `L2`, touch: Sprint button toggles). 27 studs/s, 20 while carrying. Uses stamina |
 | Slide | `C` or `Ctrl` (gamepad `B`, touch: Slide button). Feet-first burst; tackles miss you mid-slide. Free, just a 1.6 s cooldown (shown on the HUD) |
 | Score | Carry it into your own glowing drop zone |
-| Tackle | `F`, gamepad `R1`, or the on-screen button. A committed dive: you lunge, then you're down for 1 s and can't do anything. 9-stud reach, 2.5 s cooldown. Knocks the parcel loose and stuns the carrier for 1.25 s |
+| Tackle | `F`, gamepad `R1`, or the on-screen button. A committed dive: you lunge, then you're down for 1 s and can't do anything. 9-stud reach, 2.5 s cooldown. Knocks the package loose and stuns the carrier for 1.25 s |
 | Kickoff | At the start and after every delivery, everyone goes back to their spawn box behind a force-field gate for an 8 s countdown |
 | Round | Lobby (20 s, set `LOBBY_SECONDS = 60` for release) → 3 min round (first to 3) → 8 s results → lobby |
 
@@ -62,7 +64,7 @@ whatever's left.
 ### Studio-only QA keys
 
 While playtesting in Studio, hold **Shift** and press **1** (Ember +1),
-**2** (Tide +1), **3** (end the round) or **4** (take the parcel). These do nothing in a published game (the
+**2** (Tide +1), **3** (end the round) or **4** (take the package). These do nothing in a published game (the
 server only listens for them when `RunService:IsStudio()`).
 
 ## Structure
@@ -115,9 +117,9 @@ src/
 - Players simulate their own characters, so a client can ignore WalkSpeed or
   teleport. `Movement.luau` checks every player's distance over a rolling
   1-second window against the speed they're allowed (carrying, stunned or
-  running). A violation drops the parcel at the last plausible spot and
+  running). A violation drops the package at the last plausible spot and
   blocks that player's pickups and tackles for 2 seconds, so speed and
-  teleport hacks can't steal or run the parcel home.
+  teleport hacks can't steal or run the package home.
 - Sprint and slide are requested, not declared: the server owns stamina and
   cooldowns (`Sprint.luau`) and the Movement check uses the same speed limit,
   so a client can't sprint forever or slide off cooldown.
