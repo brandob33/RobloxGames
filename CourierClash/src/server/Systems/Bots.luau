@@ -308,13 +308,13 @@ local function near(a: Vector3, b: Vector3, range: number): boolean
 	return flat(a - b).Magnitude <= range
 end
 
--- The package this bot cares about: the one nearest to it.
+-- The package this bot cares about: the nearest one still in play.
 local function focusPackage(position: Vector3): number
 	local best = 1
 	local bestDistance = math.huge
 	for index = 1, Parcel.count() do
 		local distance = flat(Parcel.getPosition(index) - position).Magnitude
-		if distance < bestDistance then
+		if not Parcel.isDelivered(index) and distance < bestDistance then
 			best, bestDistance = index, distance
 		end
 	end
@@ -507,7 +507,12 @@ local function think(brain: Brain, now: number)
 		humanoid:MoveTo(if lunging then position + heading * 12 else position)
 		return
 	end
-	if Match.getPhase() ~= "Playing" or Match.isLocked() or Agents.isStunned(agent) then
+	if
+		Match.getPhase() ~= "Playing"
+		or Match.isLocked()
+		or not Parcel.isActive()
+		or Agents.isStunned(agent)
+	then
 		Sprint.setWanted(agent, false)
 		humanoid:MoveTo(position)
 		return

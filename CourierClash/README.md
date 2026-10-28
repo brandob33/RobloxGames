@@ -20,7 +20,7 @@ fine with one person; real players always take priority, and
 | Score | Carry it into your own glowing drop zone |
 | Tackle | `F`, gamepad `R1`, or the on-screen button. A committed, aimed dive: it only lands if your body reaches the carrier during the lunge. Miss and you're on the ground for 1 s. 2.5 s cooldown. Knocks the package loose and stuns the carrier for 1.25 s |
 | Shove | `E`, gamepad `X`, or the on-screen button. Pushes the nearest opponent in front of you (within 7 studs) back and staggers them for a moment, then they can't be shoved again for 1 s. 1.8 s cooldown. Not while carrying, and a carrier still in their force-field bubble can't be shoved |
-| Kickoff | At the start and after every delivery, everyone goes back to their spawn box behind a force-field gate for an 8 s countdown |
+| Kickoff | At the start, and once both packages have been delivered, everyone goes back to their spawn box behind a force-field gate for an 8 s countdown. After the first delivery, play goes on with the other package |
 | Round | Lobby (20 s, set `LOBBY_SECONDS = 60` for release) → 3 min round (first to 3) → 8 s results → lobby |
 
 All numbers live in [`src/shared/Config.luau`](src/shared/Config.luau).
