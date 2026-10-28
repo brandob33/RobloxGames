@@ -91,9 +91,9 @@ local PERKS: { Perk } = {
 }
 
 local COIN_PACKS: { CoinPack } = {
-	{ productId = 0, coins = 500, label = "500 coins" },
-	{ productId = 0, coins = 1200, label = "1,200 coins" },
-	{ productId = 0, coins = 3000, label = "3,000 coins" },
+	{ productId = 3723213488, coins = 500, label = "500 coins" },
+	{ productId = 3723213563, coins = 1200, label = "1,200 coins" },
+	{ productId = 3723213642, coins = 3000, label = "3,000 coins" },
 }
 
 -- Perk effects per level.
