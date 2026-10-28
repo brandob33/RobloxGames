@@ -1,0 +1,39 @@
+name: Courier Clash CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "CourierClash/**"
+      - ".github/workflows/courier-clash.yml"
+  pull_request:
+    paths:
+      - "CourierClash/**"
+      - ".github/workflows/courier-clash.yml"
+
+defaults:
+  run:
+    working-directory: CourierClash
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install StyLua and Selene
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -sSL -o stylua.zip https://github.com/JohnnyMorganz/StyLua/releases/download/v0.20.0/stylua-linux-x86_64.zip
+          curl -sSL -o selene.zip https://github.com/Kampfkarren/selene/releases/download/0.27.1/selene-0.27.1-linux.zip
+          unzip -o -q stylua.zip -d "$HOME/bin"
+          unzip -o -q selene.zip -d "$HOME/bin"
+          chmod +x "$HOME/bin/stylua" "$HOME/bin/selene"
+          rm stylua.zip selene.zip
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Check formatting
+        run: stylua --check src
+
+      - name: Lint
+        run: selene src

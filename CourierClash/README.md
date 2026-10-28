@@ -1,0 +1,100 @@
+# Courier Clash
+
+Two teams, one parcel. Grab the parcel from the center of the field, carry
+it into your team's drop zone to score, and tackle whoever is carrying it
+for the other team. First team to 3 deliveries (or the most when the 3-minute
+clock runs out) wins the round. Teams are filled up with bots, so it plays
+fine with one person.
+
+| | |
+| --- | --- |
+| Teams | **Ember** (orange, west end) vs **Tide** (blue, east end), 4 couriers each |
+| Pick up | Walk into the parcel. Carriers run slower (14 vs 18 studs/s) |
+| Score | Carry it into your own glowing drop zone |
+| Tackle | `F`, gamepad `R1`, or the on-screen button. 9-stud reach, 2.5 s cooldown. Knocks the parcel loose and stuns the carrier for 1.25 s |
+| Round | 12 s intermission → 3 min round (first to 3) → 8 s results |
+
+All numbers live in [`src/shared/Config.luau`](src/shared/Config.luau).
+
+## Run it in Roblox Studio
+
+1. Install the toolchain once with [Rokit](https://github.com/rojo-rbx/rokit):
+   `rokit install` (in this folder). That gives you Rojo, Wally, Selene and StyLua.
+2. Install the Rojo Studio plugin: `rojo plugin install`.
+3. In Studio, create a new **Baseplate** place.
+4. In this folder, run `rojo serve`. In Studio open the Rojo plugin and press **Connect**.
+5. Press **Play**. The server builds the arena, teams and bots on startup;
+   you don't need to place anything by hand.
+
+To produce a place file instead: `rojo build -o CourierClash.rbxl`.
+
+### Studio-only QA keys
+
+While playtesting in Studio, hold **Shift** and press **1** (Ember +1),
+**2** (Tide +1), **3** (end the round) or **4** (take the parcel). These do nothing in a published game (the
+server only listens for them when `RunService:IsStudio()`).
+
+## Structure
+
+```text
+src/
+├── shared/                 → ReplicatedStorage.Shared
+│   ├── Types.luau            payload + state types
+│   ├── Config.luau           every tunable number
+│   ├── Remotes.luau          the one list of remotes
+│   └── Util/
+│       ├── Signal.luau
+│       ├── MatchLogic.luau   pure rules (teams, bots, winner)
+│       └── MatchLogic.spec.luau
+├── server/                 → ServerScriptService.Server
+│   ├── init.server.luau      two-phase bootstrap
+│   ├── Net.luau              creates remotes
+│   ├── Util/RateLimit.luau
+│   └── Systems/
+│       ├── Arena.luau        builds the field, drop zones, spawns
+│       ├── Agents.luau       players + bots as one "Agent" type, teams, speed
+│       ├── Parcel.luau       pickup, carry, tackle, delivery
+│       ├── Movement.luau     server-side speed/teleport check for players
+│       ├── Match.luau        round loop, scores, state broadcast
+│       ├── Bots.luau         bot fill + AI
+│       └── Cheats.luau       Studio-only QA
+└── client/                 → StarterPlayerScripts.Client
+    ├── init.client.luau
+    ├── Net.luau
+    └── Controllers/
+        ├── HudController.luau     score bar, timer, banners, tackle button
+        ├── TackleController.luau  input + cooldown
+        └── DevKeys.luau           Studio-only QA keys
+```
+
+## Security model
+
+- The server decides pickups, tackles and deliveries from positions it sees;
+  the client never reports them.
+- The only gameplay remote, `Tackle`, takes no arguments. The server picks
+  the target (the enemy carrier), checks range and cooldown, and rate-limits
+  the remote.
+- Players simulate their own characters, so a client can ignore WalkSpeed or
+  teleport. `Movement.luau` checks every player's distance over a rolling
+  1-second window against the speed they're allowed (carrying, stunned or
+  running). A violation drops the parcel at the last plausible spot and
+  blocks that player's pickups and tackles for 2 seconds, so speed and
+  teleport hacks can't steal or run the parcel home.
+- Bots are simulated by the server (network owner `nil`).
+
+## Checks
+
+- Format: `stylua src`
+- Lint: `selene src`
+- Tests: `MatchLogic.spec.luau` is a [TestEZ](https://github.com/Roblox/testez)
+  spec. Uncomment TestEZ in `wally.toml`, run `wally install`, then serve the
+  test project (`rojo serve test.project.json`, which also maps
+  `DevPackages`) and run this in the Studio command bar during Play:
+  `require(game.ReplicatedStorage.DevPackages.TestEZ).TestBootstrap:run({ game.ReplicatedStorage.Shared.Util })`
+
+## Not in this version
+
+- No saved data (wins, coins), no shop, no sounds or custom art. Everything
+  is built from plain parts so there are no asset IDs to upload yet.
+- Bots steer straight at their target and jump or sidestep when stuck;
+  no pathfinding.
