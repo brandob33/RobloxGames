@@ -8,7 +8,7 @@ export type TeamId = "Ember" | "Tide"
 -- solvers; use MatchLogic.scoreOf / addTo for dynamic team access.
 export type TeamScores = { Ember: number, Tide: number }
 
-export type Phase = "Waiting" | "Intermission" | "Playing" | "Results"
+export type Phase = "Waiting" | "Lobby" | "Playing" | "Results"
 
 -- Home: resting at the center pedestal. Loose: dropped somewhere on the field.
 export type ParcelStatus = "Home" | "Carried" | "Loose"
@@ -28,6 +28,8 @@ export type MatchState = {
 	-- UserId of a human carrier, nil for bots
 	carrierUserId: number?,
 	winner: Winner?,
+	-- workspace:GetServerTimeNow() when the kickoff lock ends; 0 = not locked
+	lockedUntil: number,
 }
 
 export type NoticeKind =
@@ -38,6 +40,7 @@ export type NoticeKind =
 	| "Returned"
 	| "RoundStart"
 	| "RoundEnd"
+	| "Go"
 
 export type Notice = {
 	kind: NoticeKind,

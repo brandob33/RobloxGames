@@ -1,6 +1,7 @@
 --!strict
 -- Tackle input (F key / gamepad R1 / the HUD button). Starts the cooldown
 -- optimistically for feel; the server's TackleCooldown reply is the truth.
+-- Every tackle is a dive (MovementController.dive), hit or miss.
 
 local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -8,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
 local Signal = require(ReplicatedStorage.Shared.Util.Signal)
 local Net = require(script.Parent.Parent.Net)
+local MovementController = require(script.Parent.MovementController)
 
 local TackleController = {}
 
@@ -16,6 +18,9 @@ local cooldownChanged: Signal.Signal<number> = Signal.new()
 TackleController.CooldownChanged = cooldownChanged
 
 local readyAt = 0
+-- A fresh accepted tackle reports nearly the full cooldown; anything well
+-- below that means the server refused it, so there was no dive.
+local REJECT_MARGIN = 0.6
 
 local function setCooldown(seconds: number)
 	readyAt = os.clock() + seconds
@@ -26,13 +31,20 @@ function TackleController.request()
 	if os.clock() < readyAt then
 		return
 	end
+	if MovementController.isDiving() then
+		return
+	end
 	setCooldown(Config.TACKLE_COOLDOWN)
+	MovementController.dive()
 	Net.fire("Tackle")
 end
 
 function TackleController.init()
 	Net.on("TackleCooldown", function(remaining: unknown)
 		if typeof(remaining) == "number" and remaining == remaining then
+			if remaining < Config.TACKLE_COOLDOWN - REJECT_MARGIN then
+				MovementController.cancelDive()
+			end
 			setCooldown(math.clamp(remaining, 0, Config.TACKLE_COOLDOWN))
 		end
 	end)

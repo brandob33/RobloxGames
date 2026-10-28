@@ -145,7 +145,8 @@ local function attach(agent: Agent, root: BasePart)
 
 	carrier = agent
 	agent.carrying = true
-	Agents.refreshSpeed(agent)
+	-- Burst of speed on pickup (also refreshes speed for carrying).
+	Agents.boost(agent, Config.PICKUP_BOOST_SECONDS)
 	lastCarrierPosition = root.Position
 
 	setStatus("Carried")
@@ -199,7 +200,12 @@ end
 -- so spamming the button gains nothing. Returns true if the carrier was hit.
 function Parcel.tackle(attacker: Agent): boolean
 	local now = os.clock()
-	if not active or now < attacker.tackleReadyAt or Agents.isStunned(attacker) then
+	if
+		not active
+		or now < attacker.tackleReadyAt
+		or Agents.isStunned(attacker)
+		or Agents.isDiving(attacker)
+	then
 		return false
 	end
 	if not Movement.verify(attacker) then
@@ -210,6 +216,8 @@ function Parcel.tackle(attacker: Agent): boolean
 		return false
 	end
 	attacker.tackleReadyAt = now + Config.TACKLE_COOLDOWN
+	-- Every tackle is a committed dive, hit or miss.
+	Agents.dive(attacker)
 
 	local target = carrier
 	if not target or target == attacker or target.team == attacker.team then
@@ -285,6 +293,7 @@ local function stepFree(now: number)
 		if
 			now >= agent.immuneUntil
 			and not Agents.isStunned(agent)
+			and not Agents.isDiving(agent)
 			and not Movement.isSuspect(agent)
 			and Agents.humanoid(agent)
 		then

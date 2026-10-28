@@ -52,6 +52,7 @@ local function canSprint(agent: Agent): boolean
 		and not agent.exhausted
 		and agent.stamina > 0
 		and not Agents.isStunned(agent)
+		and not Agents.isDiving(agent)
 		and Agents.humanoid(agent) ~= nil
 end
 
@@ -77,6 +78,7 @@ function Sprint.trySlide(agent: Agent): boolean
 		not agent.sprinting
 		or Agents.isSliding(agent)
 		or Agents.isStunned(agent)
+		or Agents.isDiving(agent)
 		or now < agent.slideReadyAt - COOLDOWN_TOLERANCE
 		or agent.stamina < Config.SLIDE_STAMINA - SLIDE_STAMINA_TOLERANCE
 		or not Agents.humanoid(agent)
@@ -90,11 +92,7 @@ function Sprint.trySlide(agent: Agent): boolean
 	agent.slideReadyAt = now + Config.SLIDE_COOLDOWN
 	Agents.refreshSpeed(agent)
 	publish(agent)
-	task.delay(duration, function()
-		if not Agents.isSliding(agent) then
-			Agents.refreshSpeed(agent)
-		end
-	end)
+	Agents.refreshAt(agent, agent.slidingUntil)
 	return true
 end
 

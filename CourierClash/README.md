@@ -3,18 +3,20 @@
 Two teams, one parcel. Grab the parcel from the center of the field, carry
 it into your team's drop zone to score, and tackle whoever is carrying it
 for the other team. First team to 3 deliveries (or the most when the 3-minute
-clock runs out) wins the round. Teams are filled up with bots, so it plays
-fine with one person.
+clock runs out) wins the round. Empty slots are filled with bots so it plays
+fine with one person; real players always take priority, and
+`FILL_WITH_BOTS = false` in Config turns bots off entirely.
 
 | | |
 | --- | --- |
 | Teams | **Ember** (orange, west end) vs **Tide** (blue, east end), 10 couriers each |
-| Pick up | Walk into the parcel. Carriers run slower (14 vs 18 studs/s) |
+| Pick up | Walk into the parcel. You get a 1 s speed burst, then carriers run slower (14 vs 18 studs/s) |
 | Sprint | Hold `Shift` (gamepad `L2`, touch: Sprint button toggles). 27 studs/s, 20 while carrying. Uses stamina |
-| Slide | `C` or `Ctrl` (gamepad `B`, touch: Slide button) while sprinting. Short burst; tackles miss you mid-slide. 1.6 s cooldown, costs stamina |
+| Slide | `C` or `Ctrl` (gamepad `B`, touch: Slide button) while sprinting. Feet-first burst; tackles miss you mid-slide. 1.6 s cooldown (shown on the HUD), costs stamina |
 | Score | Carry it into your own glowing drop zone |
-| Tackle | `F`, gamepad `R1`, or the on-screen button. 9-stud reach, 2.5 s cooldown. Knocks the parcel loose and stuns the carrier for 1.25 s |
-| Round | 12 s intermission → 3 min round (first to 3) → 8 s results |
+| Tackle | `F`, gamepad `R1`, or the on-screen button. A committed dive: you lunge, then you're down for 1 s and can't do anything. 9-stud reach, 2.5 s cooldown. Knocks the parcel loose and stuns the carrier for 1.25 s |
+| Kickoff | At the start and after every delivery, everyone goes back to their spawn box behind a force-field gate for an 8 s countdown |
+| Round | Lobby (20 s, set `LOBBY_SECONDS = 60` for release) → 3 min round (first to 3) → 8 s results → lobby |
 
 All numbers live in [`src/shared/Config.luau`](src/shared/Config.luau).
 
@@ -57,7 +59,7 @@ src/
 │   ├── Net.luau              creates remotes
 │   ├── Util/RateLimit.luau
 │   └── Systems/
-│       ├── Arena.luau        builds the field, drop zones, spawns
+│       ├── Arena.luau        builds the field, spawn boxes, gates, lobby
 │       ├── Agents.luau       players + bots as one "Agent" type, teams, speed
 │       ├── Parcel.luau       pickup, carry, tackle, delivery
 │       ├── Movement.luau     server-side speed/teleport check for players
@@ -71,7 +73,8 @@ src/
     └── Controllers/
         ├── HudController.luau     score bar, timer, banners, tackle button
         ├── TackleController.luau  input + cooldown
-        ├── MovementController.luau sprint/slide input, prediction, FOV
+        ├── MovementController.luau sprint/slide/dive input, prediction, FOV
+        ├── PoseController.luau    slide and dive body poses
         └── DevKeys.luau           Studio-only QA keys
 ```
 
@@ -105,7 +108,7 @@ src/
 
 ## Not in this version
 
-- No saved data (wins, coins), no shop, no sounds or custom art. Everything
+- No saved data (wins, coins), no lobby shop yet, no sounds or custom art. Everything
   is built from plain parts so there are no asset IDs to upload yet.
 - Bots steer straight at their target and jump or sidestep when stuck;
   no pathfinding.

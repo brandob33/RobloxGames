@@ -7,7 +7,10 @@
 -- its Movement check enforces the speed limit; this controller mirrors the
 -- same rules from replicated attributes so the two agree:
 --   Player   Stamina, Sprinting   (Sprint system)
---   Character Carrying, Stunned   (Agents.refreshSpeed)
+--   Character Carrying, Stunned, Sliding, Diving, Boosted   (Agents.refreshSpeed)
+--
+-- A tackle is a committed dive (TackleController calls dive()): a short
+-- lunge forward, then you're down and can't move, jump, sprint or slide.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -52,6 +55,10 @@ local slideStartedAt = 0
 local slideEndsAt = 0
 local slideReadyAt = 0
 local slideDirection = Vector3.zero
+local diveLungeEndsAt = 0
+local diveEndsAt = 0
+local diveDirection = Vector3.zero
+local jumpLocked = false
 local restoreHipHeight: number? = nil
 
 local humanoid: Humanoid? = nil
@@ -71,6 +78,16 @@ local function isSliding(now: number): boolean
 	return now < slideEndsAt
 end
 
+-- Our own timer decides, so we get up as soon as the server does. The
+-- replicated flag only covers a dive we didn't predict (e.g. respawn race).
+local DIVE_FLAG_IGNORE_SECONDS = 0.5
+local function isDiving(now: number): boolean
+	if now < diveEndsAt then
+		return true
+	end
+	return now > diveEndsAt + DIVE_FLAG_IGNORE_SECONDS and characterFlag("Diving")
+end
+
 local function sprintActive(now: number): boolean
 	if not wantSprint then
 		return false
@@ -86,7 +103,13 @@ local function walkSpeed(now: number): number
 	if characterFlag("Stunned") then
 		return 0
 	end
+	if isDiving(now) then
+		return if now < diveLungeEndsAt then Config.DIVE_SPEED else 0
+	end
 	local carrying = characterFlag("Carrying")
+	if characterFlag("Boosted") and not isSliding(now) then
+		return Config.PICKUP_BOOST_SPEED
+	end
 	if sprintActive(now) or isSliding(now) then
 		return if carrying then Config.CARRIER_SPRINT_SPEED else Config.SPRINT_SPEED
 	end
@@ -109,6 +132,21 @@ local function endSlide()
 	restoreHipHeight = nil
 end
 
+local function setJumpLocked(locked: boolean)
+	local currentHumanoid = humanoid
+	if locked == jumpLocked or not currentHumanoid then
+		return
+	end
+	jumpLocked = locked
+	currentHumanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, not locked)
+end
+
+local function endDive()
+	diveLungeEndsAt = 0
+	diveEndsAt = 0
+	setJumpLocked(false)
+end
+
 function MovementController.setSprint(wanted: boolean)
 	if wanted == wantSprint then
 		return
@@ -125,6 +163,45 @@ function MovementController.isSprintHeld(): boolean
 	return wantSprint
 end
 
+-- Local prediction state, for the pose controller.
+function MovementController.isSliding(): boolean
+	return isSliding(os.clock())
+end
+
+function MovementController.isDiving(): boolean
+	return isDiving(os.clock())
+end
+
+-- Start the tackle dive. Returns true if it started.
+function MovementController.dive(): boolean
+	local now = os.clock()
+	local currentHumanoid = humanoid
+	local currentRoot = root
+	if not currentHumanoid or not currentRoot or currentHumanoid.Health <= 0 then
+		return false
+	end
+	if isDiving(now) or characterFlag("Stunned") then
+		return false
+	end
+	local direction = flat(currentRoot.CFrame.LookVector)
+	if direction.Magnitude < 0.01 then
+		return false
+	end
+	if isSliding(now) then
+		endSlide()
+	end
+	diveDirection = direction.Unit
+	diveLungeEndsAt = now + Config.DIVE_LUNGE_SECONDS
+	diveEndsAt = now + Config.DIVE_SECONDS
+	setJumpLocked(true)
+	return true
+end
+
+-- The server refused the tackle (so no dive): get back up.
+function MovementController.cancelDive()
+	endDive()
+end
+
 -- Returns true if a slide started.
 function MovementController.slide(): boolean
 	local now = os.clock()
@@ -136,6 +213,7 @@ function MovementController.slide(): boolean
 	-- Same rules the server checks in Sprint.trySlide.
 	if
 		isSliding(now)
+		or isDiving(now)
 		or now < slideReadyAt
 		or not sprintActive(now)
 		or characterFlag("Stunned")
@@ -193,6 +271,21 @@ local function onPreSimulation()
 		endSlide()
 	end
 
+	if now < diveEndsAt then
+		if characterFlag("Stunned") or currentHumanoid.Health <= 0 then
+			endDive()
+		elseif now < diveLungeEndsAt then
+			local velocity = currentRoot.AssemblyLinearVelocity
+			currentRoot.AssemblyLinearVelocity = Vector3.new(
+				diveDirection.X * Config.DIVE_SPEED,
+				velocity.Y,
+				diveDirection.Z * Config.DIVE_SPEED
+			)
+		end
+	elseif jumpLocked then
+		endDive()
+	end
+
 	local speed = walkSpeed(now)
 	if currentHumanoid.WalkSpeed ~= speed then
 		currentHumanoid.WalkSpeed = speed
@@ -207,7 +300,7 @@ local function onRenderStep(dt: number)
 	end
 	local now = os.clock()
 	local moving = flat(currentRoot.AssemblyLinearVelocity).Magnitude > MOVING_SPEED
-	local target = if isSliding(now)
+	local target = if isSliding(now) or now < diveLungeEndsAt
 		then FOV_SLIDE
 		elseif sprintActive(now) and moving then FOV_SPRINT
 		else FOV_BASE
@@ -217,6 +310,9 @@ end
 local function onCharacterAdded(character: Model)
 	slideEndsAt = 0
 	restoreHipHeight = nil
+	diveLungeEndsAt = 0
+	diveEndsAt = 0
+	jumpLocked = false
 	humanoid = nil
 	root = nil
 	local newHumanoid = character:WaitForChild("Humanoid", 10)

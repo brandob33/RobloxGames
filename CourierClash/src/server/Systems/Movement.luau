@@ -44,6 +44,16 @@ local graces: { [Agent]: Grace } = {}
 local GRACE_EXTRA = 0.15
 local GRACE_MAX = 0.6
 
+-- After a server teleport the client may still report its old position
+-- for a moment. Until the player shows up at the destination they count as
+-- unverified (no pickups or tackles). Once they land, or the wait runs out,
+-- the check restarts from the destination, so a player can't use the
+-- teleport to "launder" a position they jumped to themselves.
+local TELEPORT_WAIT_SECONDS = 1
+local TELEPORT_LAND_RADIUS = 8
+type PendingTeleport = { position: Vector3, untilTime: number }
+local pendingTeleports: { [Agent]: PendingTeleport } = {}
+
 local function flat(vector: Vector3): Vector3
 	return Vector3.new(vector.X, 0, vector.Z)
 end
@@ -81,6 +91,23 @@ local function sample(agent: Agent, now: number)
 		return
 	end
 
+	local pending = pendingTeleports[agent]
+	if pending then
+		local landed = flat(root.Position - pending.position).Magnitude <= TELEPORT_LAND_RADIUS
+		if not landed and now < pending.untilTime then
+			tracks[agent] = nil
+			return
+		end
+		pendingTeleports[agent] = nil
+		-- If they never arrived, the distance from the destination is judged
+		-- like any other movement.
+		local reference = if landed then root.Position else pending.position
+		tracks[agent] = {
+			character = character,
+			samples = { { time = now, position = reference, speed = speedLimit(agent, now) } },
+		}
+	end
+
 	local track = tracks[agent]
 	if not track or track.character ~= character then
 		track = { character = character, samples = {} }
@@ -93,11 +120,9 @@ local function sample(agent: Agent, now: number)
 	while #samples > 2 and now - samples[2].time >= WINDOW do
 		table.remove(samples, 1)
 	end
+	-- Judge partial windows too, so a fresh track (respawn, teleport) has
+	-- no unchecked warm-up second.
 	local oldest = samples[1]
-	if now - oldest.time < WINDOW then
-		return
-	end
-
 	local allowed = SLACK
 	for i = 2, #samples do
 		allowed += samples[i - 1].speed * (samples[i].time - samples[i - 1].time) * TOLERANCE
@@ -119,14 +144,23 @@ function Movement.verify(agent: Agent): boolean
 		return true
 	end
 	sample(agent, os.clock())
-	return not Movement.isSuspect(agent)
+	return pendingTeleports[agent] == nil and not Movement.isSuspect(agent)
 end
 
 function Movement.init()
+	-- A server-initiated move (kickoff, lobby) isn't the player's movement.
+	Agents.Teleported.connect(function(teleport)
+		tracks[teleport.agent] = nil
+		pendingTeleports[teleport.agent] = {
+			position = teleport.position,
+			untilTime = os.clock() + TELEPORT_WAIT_SECONDS,
+		}
+	end)
 	Agents.Removed.connect(function(agent)
 		tracks[agent] = nil
 		suspectUntil[agent] = nil
 		graces[agent] = nil
+		pendingTeleports[agent] = nil
 	end)
 end
 

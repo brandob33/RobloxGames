@@ -1,7 +1,10 @@
 --!strict
 -- Builds the arena in code (no place file needed) and answers geometry
--- questions: where each team's drop zone and spawn are, and whether a
+-- questions: where each team's drop zone and spawn box are, and whether a
 -- position is out of bounds. Ember's base is on -X, Tide's on +X.
+--
+-- Each team spawns in a walled box at its end of the field. The box's
+-- front is a gate that Match closes during kickoff (setGatesOpen).
 
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -15,17 +18,31 @@ local Arena = {}
 
 local HALF_X = Config.ARENA_LENGTH / 2
 local HALF_Z = Config.ARENA_WIDTH / 2
-local ZONE_X = HALF_X - 28
-local SPAWN_X = HALF_X - 12
-local WALL_HEIGHT = 14
+local BOX_FRONT_X = HALF_X - Config.SPAWN_BOX_DEPTH
+local BOX_HALF_Z = Config.SPAWN_BOX_WIDTH / 2
+local ZONE_X = BOX_FRONT_X - 22
+local WALL_HEIGHT = 40
 local PARCEL_REST_Y = 1.5
+local GATE_CLOSED_TRANSPARENCY = 0.6
+-- Obstacle layout is authored for a 360x240 field and scaled to fit.
+local LAYOUT_SCALE_X = HALF_X / 180
+local LAYOUT_SCALE_Z = HALF_Z / 120
 
 Arena.PARCEL_HOME = Vector3.new(0, 4, 0)
+
+-- Lobby: a walled platform beside the field where players wait between
+-- games (the shop will live here).
+local LOBBY_CENTER = Vector3.new(0, 0, HALF_Z + 140)
+local LOBBY_SIZE = 140
+local LOBBY_WALL_HEIGHT = 30
+local LOBBY_COLOR = Color3.fromRGB(64, 70, 92)
+local random = Random.new()
 
 local GROUND_COLOR = Color3.fromRGB(96, 168, 92)
 local STRIPE_COLOR = Color3.fromRGB(235, 235, 220)
 local CRATE_COLOR = Color3.fromRGB(176, 132, 84)
 local WALL_COLOR = Color3.fromRGB(200, 220, 255)
+local gates: { Part } = {}
 
 local PILLAR_COLOR = Color3.fromRGB(150, 150, 160)
 local BARRIER_COLOR = Color3.fromRGB(70, 128, 70)
@@ -54,6 +71,12 @@ local OBSTACLES: { Obstacle } = {
 	{ kind = "Barrier", x = -80, z = 48, size = HEDGE_Z },
 	{ kind = "Barrier", x = -130, z = 0, size = HEDGE_Z },
 	{ kind = "Barrier", x = -40, z = 60, size = HEDGE_X },
+	{ kind = "Crate", x = -15, z = 35, size = CRATE },
+	{ kind = "Crate", x = -100, z = 110, size = CRATE },
+	{ kind = "Pillar", x = -75, z = 75, size = PILLAR },
+	{ kind = "Pillar", x = -140, z = 60, size = PILLAR },
+	{ kind = "Pillar", x = -20, z = 40, size = PILLAR },
+	{ kind = "Barrier", x = -105, z = 90, size = HEDGE_X },
 }
 
 local arenaFolder: Folder? = nil
@@ -66,10 +89,40 @@ function Arena.dropZoneCenter(team: TeamId): Vector3
 	return Vector3.new(side(team) * ZONE_X, 0, 0)
 end
 
--- Spawn point for the n-th bot of a team, spread across the spawn pad.
-function Arena.spawnPosition(team: TeamId, index: number): Vector3
-	local slot = (index - 1) % 10
-	return Vector3.new(side(team) * SPAWN_X, 4, (slot - 4.5) * 5)
+-- Spawn spot for the n-th courier of a team: two rows of ten inside the
+-- spawn box, facing the field.
+function Arena.spawnCFrame(team: TeamId, index: number): CFrame
+	local column = (index - 1) % 10
+	local row = math.floor((index - 1) / 10) % 2
+	local x = side(team) * (HALF_X - 9 - row * 10)
+	local position = Vector3.new(x, 4, (column - 4.5) * 9)
+	return CFrame.lookAt(position, Vector3.new(0, position.Y, position.Z))
+end
+
+function Arena.isInSpawnBox(team: TeamId, position: Vector3): boolean
+	local x = position.X * side(team)
+	return x >= BOX_FRONT_X - 1 and x <= HALF_X + 1 and math.abs(position.Z) <= BOX_HALF_Z + 1
+end
+
+function Arena.isInLobby(position: Vector3): boolean
+	local half = LOBBY_SIZE / 2
+	return math.abs(position.X - LOBBY_CENTER.X) <= half
+		and math.abs(position.Z - LOBBY_CENTER.Z) <= half
+		and position.Y > -20
+end
+
+function Arena.lobbyCFrame(): CFrame
+	local spread = LOBBY_SIZE / 2 - 15
+	local position = LOBBY_CENTER
+		+ Vector3.new(random:NextNumber(-spread, spread), 4, random:NextNumber(-spread, spread))
+	return CFrame.lookAt(position, Vector3.new(0, position.Y, 0))
+end
+
+function Arena.setGatesOpen(open: boolean)
+	for _, gate in gates do
+		gate.CanCollide = not open
+		gate.Transparency = if open then 1 else GATE_CLOSED_TRANSPARENCY
+	end
 end
 
 -- Where a dropped parcel comes to rest: inside the walls, on the floor.
@@ -158,11 +211,48 @@ local function buildBase(team: TeamId, parent: Instance)
 	post.Transparency = 1
 	makeLabel(post, string.upper(team) .. " DROP", color)
 
+	-- Spawn box: tall see-through side and back walls, plus a gate in front.
+	local boxCenterX = side(team) * (BOX_FRONT_X + HALF_X) / 2
+	local wallHeight = Config.SPAWN_WALL_HEIGHT
+	local depth = Config.SPAWN_BOX_DEPTH
+	local boxWalls: { { name: string, size: Vector3, position: Vector3 } } = {
+		{
+			name = "BoxSideA",
+			size = Vector3.new(depth, wallHeight, 2),
+			position = Vector3.new(boxCenterX, wallHeight / 2, BOX_HALF_Z + 1),
+		},
+		{
+			name = "BoxSideB",
+			size = Vector3.new(depth, wallHeight, 2),
+			position = Vector3.new(boxCenterX, wallHeight / 2, -BOX_HALF_Z - 1),
+		},
+		{
+			name = "BoxBack",
+			size = Vector3.new(2, wallHeight, Config.SPAWN_BOX_WIDTH + 4),
+			position = Vector3.new(side(team) * (HALF_X - 1), wallHeight / 2, 0),
+		},
+	}
+	for _, wall in boxWalls do
+		local part =
+			makePart(team .. wall.name, wall.size, CFrame.new(wall.position), color, parent)
+		part.Transparency = 0.85
+	end
+	local gate = makePart(
+		team .. "Gate",
+		Vector3.new(2, wallHeight, Config.SPAWN_BOX_WIDTH + 4),
+		CFrame.new(side(team) * (BOX_FRONT_X - 1), wallHeight / 2, 0),
+		color,
+		parent
+	)
+	gate.Material = Enum.Material.ForceField
+	gate.Transparency = GATE_CLOSED_TRANSPARENCY
+	table.insert(gates, gate)
+
 	local spawn = Instance.new("SpawnLocation")
 	spawn.Name = team .. "Spawn"
 	spawn.Anchored = true
-	spawn.Size = Vector3.new(12, 1, 52)
-	spawn.CFrame = CFrame.new(side(team) * SPAWN_X, 0.5, 0)
+	spawn.Size = Vector3.new(depth - 6, 1, Config.SPAWN_BOX_WIDTH - 6)
+	spawn.CFrame = CFrame.new(boxCenterX, 0.5, 0)
 	spawn.Color = color
 	spawn.Material = Enum.Material.SmoothPlastic
 	spawn.TeamColor = BrickColor.new(color)
@@ -222,7 +312,11 @@ local function build()
 		local zs = if obstacle.z == 0 then { 0 } else { obstacle.z, -obstacle.z }
 		for _, mirrorX in { 1, -1 } do
 			for _, z in zs do
-				local at = Vector3.new(obstacle.x * mirrorX, obstacle.size.Y / 2, z)
+				local at = Vector3.new(
+					obstacle.x * LAYOUT_SCALE_X * mirrorX,
+					obstacle.size.Y / 2,
+					z * LAYOUT_SCALE_Z
+				)
 				local color = if obstacle.kind == "Crate"
 					then CRATE_COLOR
 					elseif obstacle.kind == "Pillar" then PILLAR_COLOR
@@ -241,8 +335,57 @@ local function build()
 		buildBase(team, folder)
 	end
 
+	local lobby = makePart(
+		"LobbyFloor",
+		Vector3.new(LOBBY_SIZE, 2, LOBBY_SIZE),
+		CFrame.new(LOBBY_CENTER - Vector3.new(0, 1, 0)),
+		LOBBY_COLOR,
+		folder
+	)
+	lobby.Material = Enum.Material.Slate
+	local lobbyHalf = LOBBY_SIZE / 2
+	local lobbyWalls: { { size: Vector3, offset: Vector3 } } = {
+		{
+			size = Vector3.new(LOBBY_SIZE, LOBBY_WALL_HEIGHT, 2),
+			offset = Vector3.new(0, 0, lobbyHalf + 1),
+		},
+		{
+			size = Vector3.new(LOBBY_SIZE, LOBBY_WALL_HEIGHT, 2),
+			offset = Vector3.new(0, 0, -lobbyHalf - 1),
+		},
+		{
+			size = Vector3.new(2, LOBBY_WALL_HEIGHT, LOBBY_SIZE),
+			offset = Vector3.new(lobbyHalf + 1, 0, 0),
+		},
+		{
+			size = Vector3.new(2, LOBBY_WALL_HEIGHT, LOBBY_SIZE),
+			offset = Vector3.new(-lobbyHalf - 1, 0, 0),
+		},
+	}
+	for i, wall in lobbyWalls do
+		local part = makePart(
+			"LobbyWall" .. i,
+			wall.size,
+			CFrame.new(LOBBY_CENTER + wall.offset + Vector3.new(0, LOBBY_WALL_HEIGHT / 2, 0)),
+			WALL_COLOR,
+			folder
+		)
+		part.Transparency = 0.7
+	end
+	local sign = makePart(
+		"LobbySign",
+		Vector3.new(1, 8, 1),
+		CFrame.new(LOBBY_CENTER + Vector3.new(0, 4, 0)),
+		LOBBY_COLOR,
+		folder
+	)
+	sign.Transparency = 1
+	sign.CanCollide = false
+	makeLabel(sign, "LOBBY", STRIPE_COLOR)
+
 	folder.Parent = Workspace
 	arenaFolder = folder
+	Arena.setGatesOpen(true)
 end
 
 function Arena.init()
