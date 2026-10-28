@@ -14,6 +14,7 @@ local Agents = require(script.Parent.Agents)
 local Arena = require(script.Parent.Arena)
 local Match = require(script.Parent.Match)
 local Parcel = require(script.Parent.Parcel)
+local Sprint = require(script.Parent.Sprint)
 
 type Agent = Agents.Agent
 type TeamId = Types.TeamId
@@ -26,17 +27,31 @@ type Brain = {
 	sidestepUntil: number,
 	sidestepSign: number,
 	spawning: boolean,
+	idleTrack: AnimationTrack?,
+	runTrack: AnimationTrack?,
 }
 
 local Bots = {}
 
-local THINK_INTERVAL = 0.2
+local THINK_INTERVAL = 0.15
 -- Chance per think tick to tackle an in-range enemy carrier, so bots are
 -- beatable rather than frame-perfect.
 local TACKLE_CHANCE = 0.45
-local CHASERS_PER_TEAM = 2
+local CHASERS_PER_TEAM = 3
 local ESCORT_RADIUS = 35
-local GUARD_SPREAD = 22
+local GUARD_SPACING = 25
+-- Bots sprint when the thing they're after is this close.
+local SPRINT_RANGE = 70
+-- A carrying bot slides to dodge when a tackler gets this close.
+local DODGE_RANGE = Config.TACKLE_RANGE + 4
+local DODGE_CHANCE = 0.35
+
+-- Roblox's default R15 animations. Bots are server-side NPCs, so the
+-- character Animate script doesn't run for them; we drive idle/run here.
+-- Without this they glide around in a T-pose, which reads as choppy.
+local IDLE_ANIMATION = "rbxassetid://507766666"
+local RUN_ANIMATION = "rbxassetid://507767714"
+local RUN_ANIMATION_SPEED = 16
 
 local brains: { [Agent]: Brain } = {}
 local botFolder: Folder
@@ -71,6 +86,57 @@ local function buildRig(agent: Agent): Model?
 		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
 	end
 	return rig
+end
+
+local function loadAnimations(brain: Brain, rig: Model)
+	brain.idleTrack = nil
+	brain.runTrack = nil
+	local humanoid = rig:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return
+	end
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
+		local newAnimator = Instance.new("Animator")
+		newAnimator.Parent = humanoid
+		animator = newAnimator
+	end
+	local function load(id: string, priority: Enum.AnimationPriority): AnimationTrack?
+		local animation = Instance.new("Animation")
+		animation.AnimationId = id
+		local ok, track = pcall(function()
+			return (animator :: Animator):LoadAnimation(animation)
+		end)
+		if not ok or not track then
+			return nil
+		end
+		track.Priority = priority
+		track.Looped = true
+		return track
+	end
+	brain.idleTrack = load(IDLE_ANIMATION, Enum.AnimationPriority.Idle)
+	brain.runTrack = load(RUN_ANIMATION, Enum.AnimationPriority.Movement)
+	if brain.idleTrack then
+		brain.idleTrack:Play()
+	end
+end
+
+-- Blend idle/run from the rig's actual speed.
+local function animate(brain: Brain, root: BasePart)
+	local run = brain.runTrack
+	if not run then
+		return
+	end
+	local velocity = root.AssemblyLinearVelocity
+	local speed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+	if speed > 1.5 then
+		if not run.IsPlaying then
+			run:Play(0.15)
+		end
+		run:AdjustSpeed(speed / RUN_ANIMATION_SPEED)
+	elseif run.IsPlaying then
+		run:Stop(0.2)
+	end
 end
 
 local function spawnBot(brain: Brain)
@@ -109,6 +175,7 @@ local function spawnBot(brain: Brain)
 	brain.stuckTicks = 0
 	brain.spawning = false
 	Agents.setCharacter(agent, rig)
+	loadAnimations(brain, rig)
 
 	local humanoid = rig:FindFirstChildOfClass("Humanoid")
 	if humanoid then
@@ -147,6 +214,8 @@ local function addBot(team: TeamId)
 		sidestepUntil = 0,
 		sidestepSign = 1,
 		spawning = false,
+		idleTrack = nil,
+		runTrack = nil,
 	}
 	brains[agent] = brain
 	task.spawn(spawnBot, brain)
@@ -208,39 +277,52 @@ local function rankByDistance(agent: Agent, point: Vector3, myPosition: Vector3)
 	return rank
 end
 
-local function chooseTarget(brain: Brain, position: Vector3): Vector3
+local function near(a: Vector3, b: Vector3, range: number): boolean
+	return flat(a - b).Magnitude <= range
+end
+
+-- Where to go, and whether it's worth sprinting there.
+local function chooseTarget(brain: Brain, position: Vector3): (Vector3, boolean)
 	local agent = brain.agent
 	local carrier = Parcel.getCarrier()
 	local ownZone = Arena.dropZoneCenter(agent.team)
+	local lane = (brain.slot % 5) - 2 -- -2..2, spreads teammates out
 
 	if carrier == agent then
-		return ownZone
+		return ownZone, true
 	end
 
 	if carrier then
 		local carrierRoot = Agents.root(carrier)
 		if carrierRoot then
 			if carrier.team ~= agent.team then
-				return carrierRoot.Position
+				return carrierRoot.Position, near(position, carrierRoot.Position, SPRINT_RANGE)
 			end
 			-- Teammate has it: body-block the closest threat, else run alongside.
 			local threat = nearestEnemy(carrierRoot.Position, agent.team, ESCORT_RADIUS)
 			if threat then
-				return threat
+				return threat, true
 			end
-			local side = if brain.slot % 2 == 0 then 1 else -1
-			return carrierRoot.Position + Vector3.new(0, 0, side * 8)
+			return carrierRoot.Position + Vector3.new(0, 0, lane * 8), false
 		end
 	end
 
-	-- Parcel is free: the closest couple chase it, the rest guard midfield.
+	-- Parcel is free: the closest few chase it, the rest hold guard lanes.
 	local parcelPosition = Parcel.getPosition()
 	if rankByDistance(agent, parcelPosition, position) <= CHASERS_PER_TEAM then
-		return parcelPosition
+		return parcelPosition, near(position, parcelPosition, SPRINT_RANGE)
 	end
 	local guard = parcelPosition:Lerp(ownZone, 0.55)
-	local side = if brain.slot % 2 == 0 then 1 else -1
-	return Vector3.new(guard.X, 0, side * GUARD_SPREAD)
+	return Vector3.new(guard.X, 0, lane * GUARD_SPACING), false
+end
+
+local function tryDodge(agent: Agent, position: Vector3)
+	if Parcel.getCarrier() ~= agent then
+		return
+	end
+	if nearestEnemy(position, agent.team, DODGE_RANGE) and random:NextNumber() < DODGE_CHANCE then
+		Sprint.trySlide(agent)
+	end
 end
 
 local function tryTackle(agent: Agent, position: Vector3)
@@ -306,12 +388,17 @@ local function think(brain: Brain, now: number)
 		task.spawn(spawnBot, brain)
 		return
 	end
+	animate(brain, root)
 	if Match.getPhase() ~= "Playing" or Agents.isStunned(agent) then
+		Sprint.setWanted(agent, false)
 		humanoid:MoveTo(position)
 		return
 	end
 	tryTackle(agent, position)
-	steer(brain, humanoid, position, chooseTarget(brain, position), now)
+	tryDodge(agent, position)
+	local target, sprint = chooseTarget(brain, position)
+	Sprint.setWanted(agent, sprint)
+	steer(brain, humanoid, position, target, now)
 end
 
 function Bots.init()

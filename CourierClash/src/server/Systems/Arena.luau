@@ -27,19 +27,34 @@ local STRIPE_COLOR = Color3.fromRGB(235, 235, 220)
 local CRATE_COLOR = Color3.fromRGB(176, 132, 84)
 local WALL_COLOR = Color3.fromRGB(200, 220, 255)
 
--- Low crates (jumpable) on the Ember half; mirrored onto the Tide half.
-local CRATES: { Vector3 } = {
-	Vector3.new(-30, 0, 0),
-	Vector3.new(-45, 0, -38),
-	Vector3.new(-45, 0, 38),
-	Vector3.new(-70, 0, -14),
-	Vector3.new(-70, 0, 14),
-	Vector3.new(-18, 0, -60),
-	Vector3.new(-18, 0, 60),
-	Vector3.new(-85, 0, -52),
-	Vector3.new(-85, 0, 52),
+local PILLAR_COLOR = Color3.fromRGB(150, 150, 160)
+local BARRIER_COLOR = Color3.fromRGB(70, 128, 70)
+
+type Obstacle = { kind: "Crate" | "Pillar" | "Barrier", x: number, z: number, size: Vector3 }
+
+local CRATE = Vector3.new(7, 3, 7) -- jumpable
+local PILLAR = Vector3.new(5, 10, 5) -- cover; go around it
+local HEDGE_Z = Vector3.new(3, 2, 18) -- low hedge, jumpable
+local HEDGE_X = Vector3.new(18, 2, 3)
+
+-- Ember half (x < 0). Entries with z ~= 0 are mirrored across z, and the
+-- whole list is mirrored onto the Tide half.
+local OBSTACLES: { Obstacle } = {
+	{ kind = "Crate", x = -30, z = 0, size = CRATE },
+	{ kind = "Crate", x = -45, z = 40, size = CRATE },
+	{ kind = "Crate", x = -70, z = 16, size = CRATE },
+	{ kind = "Crate", x = -22, z = 70, size = CRATE },
+	{ kind = "Crate", x = -95, z = 55, size = CRATE },
+	{ kind = "Crate", x = -120, z = 25, size = CRATE },
+	{ kind = "Crate", x = -60, z = 95, size = CRATE },
+	{ kind = "Crate", x = -130, z = 85, size = CRATE },
+	{ kind = "Pillar", x = -50, z = 0, size = PILLAR },
+	{ kind = "Pillar", x = -110, z = 45, size = PILLAR },
+	{ kind = "Pillar", x = -35, z = 100, size = PILLAR },
+	{ kind = "Barrier", x = -80, z = 48, size = HEDGE_Z },
+	{ kind = "Barrier", x = -130, z = 0, size = HEDGE_Z },
+	{ kind = "Barrier", x = -40, z = 60, size = HEDGE_X },
 }
-local CRATE_SIZE = Vector3.new(7, 3, 7)
 
 local arenaFolder: Folder? = nil
 
@@ -53,8 +68,8 @@ end
 
 -- Spawn point for the n-th bot of a team, spread across the spawn pad.
 function Arena.spawnPosition(team: TeamId, index: number): Vector3
-	local slot = (index - 1) % 6
-	return Vector3.new(side(team) * SPAWN_X, 4, (slot - 2.5) * 6)
+	local slot = (index - 1) % 10
+	return Vector3.new(side(team) * SPAWN_X, 4, (slot - 4.5) * 5)
 end
 
 -- Where a dropped parcel comes to rest: inside the walls, on the floor.
@@ -146,7 +161,7 @@ local function buildBase(team: TeamId, parent: Instance)
 	local spawn = Instance.new("SpawnLocation")
 	spawn.Name = team .. "Spawn"
 	spawn.Anchored = true
-	spawn.Size = Vector3.new(12, 1, 30)
+	spawn.Size = Vector3.new(12, 1, 52)
 	spawn.CFrame = CFrame.new(side(team) * SPAWN_X, 0.5, 0)
 	spawn.Color = color
 	spawn.Material = Enum.Material.SmoothPlastic
@@ -203,11 +218,22 @@ local function build()
 		part.Transparency = 0.7
 	end
 
-	for i, position in CRATES do
-		for _, mirror in { 1, -1 } do
-			local at = Vector3.new(position.X * mirror, CRATE_SIZE.Y / 2, position.Z)
-			local crate = makePart("Crate" .. i, CRATE_SIZE, CFrame.new(at), CRATE_COLOR, folder)
-			crate.Material = Enum.Material.WoodPlanks
+	for i, obstacle in OBSTACLES do
+		local zs = if obstacle.z == 0 then { 0 } else { obstacle.z, -obstacle.z }
+		for _, mirrorX in { 1, -1 } do
+			for _, z in zs do
+				local at = Vector3.new(obstacle.x * mirrorX, obstacle.size.Y / 2, z)
+				local color = if obstacle.kind == "Crate"
+					then CRATE_COLOR
+					elseif obstacle.kind == "Pillar" then PILLAR_COLOR
+					else BARRIER_COLOR
+				local part =
+					makePart(obstacle.kind .. i, obstacle.size, CFrame.new(at), color, folder)
+				part.Material = if obstacle.kind == "Crate"
+					then Enum.Material.WoodPlanks
+					elseif obstacle.kind == "Pillar" then Enum.Material.Concrete
+					else Enum.Material.LeafyGrass
+			end
 		end
 	end
 

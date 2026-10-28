@@ -13,7 +13,6 @@
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Config = require(ReplicatedStorage.Shared.Config)
 local Signal = require(ReplicatedStorage.Shared.Util.Signal)
 local Agents = require(script.Parent.Agents)
 
@@ -38,15 +37,35 @@ Movement.Flagged = flagged
 local tracks: { [Agent]: Track } = {}
 local suspectUntil: { [Agent]: number } = {}
 
+-- When the server lowers a player's limit (stun, losing sprint) the client
+-- only finds out a round trip later, so keep the old limit for that long.
+type Grace = { limit: number, speed: number, untilTime: number }
+local graces: { [Agent]: Grace } = {}
+local GRACE_EXTRA = 0.15
+local GRACE_MAX = 0.6
+
 local function flat(vector: Vector3): Vector3
 	return Vector3.new(vector.X, 0, vector.Z)
 end
 
-local function speedLimit(agent: Agent): number
-	if Agents.isStunned(agent) then
-		return 0
+local function speedLimit(agent: Agent, now: number): number
+	local limit = Agents.speedLimit(agent)
+	local grace = graces[agent]
+	if not grace then
+		graces[agent] = { limit = limit, speed = limit, untilTime = 0 }
+		return limit
 	end
-	return if agent.carrying then Config.CARRIER_SPEED else Config.RUN_SPEED
+	if limit < grace.limit then
+		local player = agent.player
+		local ping = if player then player:GetNetworkPing() else 0
+		grace.speed = grace.limit
+		grace.untilTime = now + math.min(GRACE_MAX, ping * 2 + GRACE_EXTRA)
+	end
+	grace.limit = limit
+	if now < grace.untilTime then
+		return math.max(limit, grace.speed)
+	end
+	return limit
 end
 
 function Movement.isSuspect(agent: Agent): boolean
@@ -68,7 +87,7 @@ local function sample(agent: Agent, now: number)
 		tracks[agent] = track
 	end
 	local samples = track.samples
-	table.insert(samples, { time = now, position = root.Position, speed = speedLimit(agent) })
+	table.insert(samples, { time = now, position = root.Position, speed = speedLimit(agent, now) })
 
 	-- Keep exactly one sample older than the window as the reference point.
 	while #samples > 2 and now - samples[2].time >= WINDOW do
@@ -87,7 +106,7 @@ local function sample(agent: Agent, now: number)
 	if moved > allowed then
 		suspectUntil[agent] = now + SUSPECT_SECONDS
 		-- Restart the window so one violation isn't counted every step.
-		track.samples = { { time = now, position = root.Position, speed = speedLimit(agent) } }
+		track.samples = { { time = now, position = root.Position, speed = speedLimit(agent, now) } }
 		flagged.fire({ agent = agent, position = oldest.position })
 	end
 end
@@ -107,6 +126,7 @@ function Movement.init()
 	Agents.Removed.connect(function(agent)
 		tracks[agent] = nil
 		suspectUntil[agent] = nil
+		graces[agent] = nil
 	end)
 end
 

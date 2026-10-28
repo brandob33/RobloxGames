@@ -4,6 +4,7 @@
 -- matters. Layout is built in code with Scale sizes so it fits phones.
 
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,6 +14,7 @@ local Types = require(ReplicatedStorage.Shared.Types)
 local MatchLogic = require(ReplicatedStorage.Shared.Util.MatchLogic)
 local Net = require(script.Parent.Parent.Net)
 local TackleController = require(script.Parent.TackleController)
+local MovementController = require(script.Parent.MovementController)
 
 type TeamId = Types.TeamId
 
@@ -25,6 +27,9 @@ local FONT_HEAVY = Font.new("rbxasset://fonts/families/GothamSSm.json", Enum.Fon
 local PANEL_COLOR = Color3.fromRGB(24, 26, 36)
 local TEXT_COLOR = Color3.fromRGB(245, 245, 245)
 local PARCEL_COLOR = Color3.fromRGB(240, 196, 64)
+local STAMINA_COLOR = Color3.fromRGB(120, 220, 255)
+local STAMINA_LOW_COLOR = Color3.fromRGB(255, 90, 90)
+local STAMINA_TWEEN = TweenInfo.new(0.15, Enum.EasingStyle.Linear)
 
 local POP = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local SETTLE = TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
@@ -46,12 +51,19 @@ type Refs = {
 	tackleButton: TextButton,
 	tackleScale: UIScale,
 	cooldownFill: Frame,
+	sprintButton: TextButton,
+	slideButton: TextButton,
+	slideScale: UIScale,
+	slideFill: Frame,
+	staminaFill: Frame,
 }
 local refs: Refs
 
 local bannerToken = 0
 local bannerFade: Tween? = nil
 local cooldownTween: Tween? = nil
+local slideCooldownTween: Tween? = nil
+local staminaTween: Tween? = nil
 
 local function teamName(team: TeamId): string
 	return string.upper(team)
@@ -98,6 +110,51 @@ local function pop(scale: UIScale)
 		TweenService:Create(scale, SETTLE, { Scale = 1 }):Play()
 	end)
 	up:Play()
+end
+
+type RoundButton = { button: TextButton, scale: UIScale, fill: Frame }
+
+-- Circular touch button with a cooldown fill that drains top-down.
+local function roundButton(
+	parent: Instance,
+	name: string,
+	text: string,
+	position: UDim2,
+	size: number
+): RoundButton
+	local button = Instance.new("TextButton")
+	button.Name = name
+	button.AnchorPoint = Vector2.new(1, 1)
+	button.Position = position
+	button.Size = UDim2.fromScale(size, size)
+	button.BackgroundColor3 = PANEL_COLOR
+	button.BackgroundTransparency = 0.15
+	button.AutoButtonColor = true
+	button.Text = ""
+	button.ClipsDescendants = true
+	corner(button, 0.5)
+	local aspect = Instance.new("UIAspectRatioConstraint")
+	aspect.AspectRatio = 1
+	aspect.Parent = button
+	local scale = Instance.new("UIScale")
+	scale.Parent = button
+	local fill = Instance.new("Frame")
+	fill.Name = "Cooldown"
+	fill.AnchorPoint = Vector2.new(0, 1)
+	fill.Position = UDim2.fromScale(0, 1)
+	fill.Size = UDim2.fromScale(1, 0)
+	fill.BackgroundColor3 = Color3.new(0, 0, 0)
+	fill.BackgroundTransparency = 0.45
+	fill.BorderSizePixel = 0
+	fill.Parent = button
+	local label = textLabel(button, "Label", UDim2.fromScale(0.86, 0.5), 22)
+	label.AnchorPoint = Vector2.new(0.5, 0.5)
+	label.Position = UDim2.fromScale(0.5, 0.5)
+	label.Text = text
+	label.FontFace = FONT_HEAVY
+	label.ZIndex = 2
+	button.Parent = parent
+	return { button = button, scale = scale, fill = fill }
 end
 
 local function buildGui(): Refs
@@ -191,39 +248,33 @@ local function buildGui(): Refs
 	teamTag.TextXAlignment = Enum.TextXAlignment.Left
 	teamTag.TextStrokeTransparency = 0.4
 
-	-- Tackle button, sized for thumbs; keyboard F / gamepad R1 also work.
-	local tackleButton = Instance.new("TextButton")
-	tackleButton.Name = "TackleButton"
-	tackleButton.AnchorPoint = Vector2.new(1, 1)
-	tackleButton.Position = UDim2.fromScale(0.97, 0.7)
-	tackleButton.Size = UDim2.fromScale(0.13, 0.13)
-	tackleButton.BackgroundColor3 = PANEL_COLOR
-	tackleButton.BackgroundTransparency = 0.15
-	tackleButton.AutoButtonColor = true
-	tackleButton.Text = ""
-	tackleButton.ClipsDescendants = true
-	corner(tackleButton, 0.5)
-	local tackleAspect = Instance.new("UIAspectRatioConstraint")
-	tackleAspect.AspectRatio = 1
-	tackleAspect.Parent = tackleButton
-	local tackleScale = Instance.new("UIScale")
-	tackleScale.Parent = tackleButton
-	local cooldownFill = Instance.new("Frame")
-	cooldownFill.Name = "Cooldown"
-	cooldownFill.AnchorPoint = Vector2.new(0, 1)
-	cooldownFill.Position = UDim2.fromScale(0, 1)
-	cooldownFill.Size = UDim2.fromScale(1, 0)
-	cooldownFill.BackgroundColor3 = Color3.new(0, 0, 0)
-	cooldownFill.BackgroundTransparency = 0.45
-	cooldownFill.BorderSizePixel = 0
-	cooldownFill.Parent = tackleButton
-	local tackleLabel = textLabel(tackleButton, "Label", UDim2.fromScale(0.86, 0.5), 22)
-	tackleLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-	tackleLabel.Position = UDim2.fromScale(0.5, 0.5)
-	tackleLabel.Text = "TACKLE\n[F]"
-	tackleLabel.FontFace = FONT_HEAVY
-	tackleLabel.ZIndex = 2
-	tackleButton.Parent = gui
+	-- Action buttons, sized for thumbs. Tackle is always shown (keyboard F /
+	-- gamepad R1 also work); Sprint and Slide only on touch devices, since
+	-- keyboard and gamepad players hold Shift/L2 and press C/Ctrl/B.
+	local tackle = roundButton(gui, "TackleButton", "TACKLE\n[F]", UDim2.fromScale(0.97, 0.7), 0.13)
+	local isTouch = UserInputService.TouchEnabled
+	local sprint = roundButton(gui, "SprintButton", "SPRINT", UDim2.fromScale(0.83, 0.86), 0.11)
+	sprint.button.Visible = isTouch
+	local slide = roundButton(gui, "SlideButton", "SLIDE", UDim2.fromScale(0.97, 0.9), 0.11)
+	slide.button.Visible = isTouch
+
+	-- Stamina bar, bottom center.
+	local staminaBack = Instance.new("Frame")
+	staminaBack.Name = "Stamina"
+	staminaBack.AnchorPoint = Vector2.new(0.5, 1)
+	staminaBack.Position = UDim2.fromScale(0.5, 0.965)
+	staminaBack.Size = UDim2.fromScale(0.28, 0.018)
+	staminaBack.BackgroundColor3 = PANEL_COLOR
+	staminaBack.BackgroundTransparency = 0.25
+	corner(staminaBack, 0.5)
+	local staminaFill = Instance.new("Frame")
+	staminaFill.Name = "Fill"
+	staminaFill.Size = UDim2.fromScale(1, 1)
+	staminaFill.BackgroundColor3 = STAMINA_COLOR
+	staminaFill.BorderSizePixel = 0
+	corner(staminaFill, 0.5)
+	staminaFill.Parent = staminaBack
+	staminaBack.Parent = gui
 
 	gui.Parent = localPlayer:WaitForChild("PlayerGui")
 
@@ -237,9 +288,14 @@ local function buildGui(): Refs
 		bannerLabel = bannerLabel,
 		bannerScale = bannerScale,
 		teamTag = teamTag,
-		tackleButton = tackleButton,
-		tackleScale = tackleScale,
-		cooldownFill = cooldownFill,
+		tackleButton = tackle.button,
+		tackleScale = tackle.scale,
+		cooldownFill = tackle.fill,
+		sprintButton = sprint.button,
+		slideButton = slide.button,
+		slideScale = slide.scale,
+		slideFill = slide.fill,
+		staminaFill = staminaFill,
 	}
 end
 
@@ -280,6 +336,8 @@ local function noticeText(notice: Types.Notice): string?
 			.. "! +1"
 	elseif notice.kind == "Tackled" then
 		return actor .. " tackled " .. (notice.targetName or "the carrier") .. "!"
+	elseif notice.kind == "Dodged" then
+		return actor .. " slid past " .. (notice.targetName or "a tackle") .. "!"
 	elseif notice.kind == "Returned" then
 		return "Parcel returned to center"
 	elseif notice.kind == "RoundStart" then
@@ -387,20 +445,51 @@ local function onState(payload: unknown)
 	render()
 end
 
+-- Drain a button's cooldown fill over `seconds`; returns the live tween.
+local function drainFill(fill: Frame, seconds: number, previous: Tween?): Tween?
+	if previous then
+		previous:Cancel()
+	end
+	fill.Size = UDim2.fromScale(1, if seconds > 0 then 1 else 0)
+	if seconds <= 0 then
+		return nil
+	end
+	local tween = TweenService:Create(
+		fill,
+		TweenInfo.new(seconds, Enum.EasingStyle.Linear),
+		{ Size = UDim2.fromScale(1, 0) }
+	)
+	tween:Play()
+	return tween
+end
+
 local function onCooldown(seconds: number)
-	if cooldownTween then
-		cooldownTween:Cancel()
+	cooldownTween = drainFill(refs.cooldownFill, seconds, cooldownTween)
+end
+
+local function onSlideCooldown(seconds: number)
+	pop(refs.slideScale)
+	slideCooldownTween = drainFill(refs.slideFill, seconds, slideCooldownTween)
+end
+
+local function renderStamina()
+	local value = localPlayer:GetAttribute("Stamina")
+	local fraction = if typeof(value) == "number"
+		then math.clamp(value / Config.STAMINA_MAX, 0, 1)
+		else 1
+	if staminaTween then
+		staminaTween:Cancel()
 	end
-	refs.cooldownFill.Size = UDim2.fromScale(1, if seconds > 0 then 1 else 0)
-	if seconds > 0 then
-		local tween = TweenService:Create(
-			refs.cooldownFill,
-			TweenInfo.new(seconds, Enum.EasingStyle.Linear),
-			{ Size = UDim2.fromScale(1, 0) }
-		)
-		cooldownTween = tween
-		tween:Play()
-	end
+	local tween = TweenService:Create(refs.staminaFill, STAMINA_TWEEN, {
+		Size = UDim2.fromScale(fraction, 1),
+		BackgroundColor3 = if fraction < 0.25 then STAMINA_LOW_COLOR else STAMINA_COLOR,
+	})
+	staminaTween = tween
+	tween:Play()
+end
+
+local function renderSprintButton(held: boolean)
+	refs.sprintButton.BackgroundColor3 = if held then STAMINA_COLOR else PANEL_COLOR
 end
 
 function HudController.init()
@@ -413,10 +502,22 @@ function HudController.init()
 		TackleController.request()
 	end)
 	localPlayer:GetPropertyChangedSignal("Team"):Connect(renderTeamTag)
+
+	MovementController.SlideStarted.connect(onSlideCooldown)
+	MovementController.SprintChanged.connect(renderSprintButton)
+	-- Touch: Sprint toggles (holding a button while steering is awkward).
+	refs.sprintButton.Activated:Connect(function()
+		MovementController.setSprint(not MovementController.isSprintHeld())
+	end)
+	refs.slideButton.Activated:Connect(function()
+		MovementController.slide()
+	end)
+	localPlayer:GetAttributeChangedSignal("Stamina"):Connect(renderStamina)
 end
 
 function HudController.start()
 	renderTeamTag()
+	renderStamina()
 	-- Late join: ask for a full snapshot instead of waiting for the next change.
 	Net.fire("RequestState")
 	while true do
