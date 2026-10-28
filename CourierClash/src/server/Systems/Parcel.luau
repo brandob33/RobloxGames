@@ -223,6 +223,16 @@ function Parcel.tackle(attacker: Agent): boolean
 	if offset.Magnitude > Config.TACKLE_RANGE then
 		return false
 	end
+	if Agents.isSliding(target) then
+		-- Slid under it: the tackle whiffs and the cooldown is spent.
+		notify({
+			kind = "Dodged",
+			team = target.team,
+			actorName = target.name,
+			targetName = attacker.name,
+		})
+		return false
+	end
 
 	-- Parcel pops forward, away from the tackler.
 	local push = flat(offset)

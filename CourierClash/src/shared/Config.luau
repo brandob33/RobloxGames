@@ -18,7 +18,7 @@ return table.freeze({
 	TEAM_COLORS = TEAM_COLORS,
 
 	-- Teams are topped up with bots to this many couriers each.
-	TEAM_SIZE = 4,
+	TEAM_SIZE = 10,
 	MIN_HUMANS_TO_START = 1,
 
 	-- Round flow (seconds)
@@ -31,7 +31,22 @@ return table.freeze({
 	-- Movement (studs/second)
 	RUN_SPEED = 18,
 	CARRIER_SPEED = 14,
+	SPRINT_SPEED = 27,
+	CARRIER_SPRINT_SPEED = 20,
 	BOT_SPEED_FACTOR = 0.92,
+
+	-- Stamina (sprint drains it while moving; slides cost a chunk)
+	STAMINA_MAX = 100,
+	SPRINT_DRAIN = 22, -- per second
+	STAMINA_REGEN = 20, -- per second
+	STAMINA_REGEN_DELAY = 0.8,
+	SPRINT_MIN_STAMINA = 15, -- needed to start sprinting again after running dry
+
+	-- Slide: sprint + C/Ctrl. A short burst that dodges tackles.
+	SLIDE_SPEED = 42,
+	SLIDE_SECONDS = 0.55,
+	SLIDE_COOLDOWN = 1.6,
+	SLIDE_STAMINA = 20,
 
 	-- Parcel
 	PICKUP_RADIUS = 5,
@@ -44,6 +59,6 @@ return table.freeze({
 	STUN_SECONDS = 1.25,
 
 	-- Arena footprint (studs)
-	ARENA_LENGTH = 260,
-	ARENA_WIDTH = 170,
+	ARENA_LENGTH = 360,
+	ARENA_WIDTH = 240,
 })

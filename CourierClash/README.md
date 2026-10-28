@@ -8,8 +8,10 @@ fine with one person.
 
 | | |
 | --- | --- |
-| Teams | **Ember** (orange, west end) vs **Tide** (blue, east end), 4 couriers each |
+| Teams | **Ember** (orange, west end) vs **Tide** (blue, east end), 10 couriers each |
 | Pick up | Walk into the parcel. Carriers run slower (14 vs 18 studs/s) |
+| Sprint | Hold `Shift` (gamepad `L2`, touch: Sprint button toggles). 27 studs/s, 20 while carrying. Uses stamina |
+| Slide | `C` or `Ctrl` (gamepad `B`, touch: Slide button) while sprinting. Short burst; tackles miss you mid-slide. 1.6 s cooldown, costs stamina |
 | Score | Carry it into your own glowing drop zone |
 | Tackle | `F`, gamepad `R1`, or the on-screen button. 9-stud reach, 2.5 s cooldown. Knocks the parcel loose and stuns the carrier for 1.25 s |
 | Round | 12 s intermission → 3 min round (first to 3) → 8 s results |
@@ -27,6 +29,10 @@ All numbers live in [`src/shared/Config.luau`](src/shared/Config.luau).
    you don't need to place anything by hand.
 
 To produce a place file instead: `rojo build -o CourierClash.rbxl`.
+
+When you publish, set **Max Players to 20** (Game Settings → Places → or the
+place's Configure page) so both teams can be full of people; bots fill
+whatever's left.
 
 ### Studio-only QA keys
 
@@ -55,6 +61,7 @@ src/
 │       ├── Agents.luau       players + bots as one "Agent" type, teams, speed
 │       ├── Parcel.luau       pickup, carry, tackle, delivery
 │       ├── Movement.luau     server-side speed/teleport check for players
+│       ├── Sprint.luau       stamina, sprint and slide rules
 │       ├── Match.luau        round loop, scores, state broadcast
 │       ├── Bots.luau         bot fill + AI
 │       └── Cheats.luau       Studio-only QA
@@ -64,6 +71,7 @@ src/
     └── Controllers/
         ├── HudController.luau     score bar, timer, banners, tackle button
         ├── TackleController.luau  input + cooldown
+        ├── MovementController.luau sprint/slide input, prediction, FOV
         └── DevKeys.luau           Studio-only QA keys
 ```
 
@@ -80,6 +88,9 @@ src/
   running). A violation drops the parcel at the last plausible spot and
   blocks that player's pickups and tackles for 2 seconds, so speed and
   teleport hacks can't steal or run the parcel home.
+- Sprint and slide are requested, not declared: the server owns stamina and
+  cooldowns (`Sprint.luau`) and the Movement check uses the same speed limit,
+  so a client can't sprint forever or slide at will.
 - Bots are simulated by the server (network owner `nil`).
 
 ## Checks

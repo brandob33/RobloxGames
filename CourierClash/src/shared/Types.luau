@@ -30,7 +30,14 @@ export type MatchState = {
 	winner: Winner?,
 }
 
-export type NoticeKind = "Pickup" | "Delivered" | "Tackled" | "Returned" | "RoundStart" | "RoundEnd"
+export type NoticeKind =
+	"Pickup"
+	| "Delivered"
+	| "Tackled"
+	| "Dodged"
+	| "Returned"
+	| "RoundStart"
+	| "RoundEnd"
 
 export type Notice = {
 	kind: NoticeKind,

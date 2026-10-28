@@ -7,12 +7,33 @@
 --   TackleCooldown S→C  seconds until the player's tackle is ready again
 --   Tackle         C→S  no arguments; the server picks the target
 --   RequestState   C→S  no arguments; asks for a fresh snapshot (late join)
+--   Sprint         C→S  boolean: sprint key held or released
+--   Slide          C→S  no arguments; the server checks sprint/stamina/cooldown
+--   SlideResult    S→C  boolean: whether the server accepted the last slide
 --   Cheat          C→S  CheatCommand; ignored outside Studio
 
-export type RemoteName = "State" | "Notice" | "TackleCooldown" | "Tackle" | "RequestState" | "Cheat"
+export type RemoteName =
+	"State"
+	| "Notice"
+	| "TackleCooldown"
+	| "Tackle"
+	| "RequestState"
+	| "Sprint"
+	| "Slide"
+	| "SlideResult"
+	| "Cheat"
 
-local NAMES: { RemoteName } =
-	{ "State", "Notice", "TackleCooldown", "Tackle", "RequestState", "Cheat" }
+local NAMES: { RemoteName } = {
+	"State",
+	"Notice",
+	"TackleCooldown",
+	"Tackle",
+	"RequestState",
+	"Sprint",
+	"Slide",
+	"SlideResult",
+	"Cheat",
+}
 
 return table.freeze({
 	FOLDER_NAME = "CourierClashRemotes",

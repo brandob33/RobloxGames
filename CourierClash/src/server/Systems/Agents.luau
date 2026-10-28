@@ -23,6 +23,14 @@ export type Agent = {
 	stunnedUntil: number, -- os.clock()
 	tackleReadyAt: number, -- os.clock()
 	immuneUntil: number, -- os.clock(); can't pick the parcel up before this
+	-- Sprint/slide state, owned by the Sprint system
+	sprintWanted: boolean,
+	sprinting: boolean,
+	exhausted: boolean, -- ran dry; must regen to SPRINT_MIN_STAMINA first
+	stamina: number,
+	staminaRegenAt: number, -- os.clock()
+	slidingUntil: number, -- os.clock(); tackles miss while sliding
+	slideReadyAt: number, -- os.clock()
 }
 
 local Agents = {}
@@ -52,6 +60,13 @@ local function newAgent(name: string, team: TeamId, player: Player?): Agent
 		stunnedUntil = 0,
 		tackleReadyAt = 0,
 		immuneUntil = 0,
+		sprintWanted = false,
+		sprinting = false,
+		exhausted = false,
+		stamina = Config.STAMINA_MAX,
+		staminaRegenAt = 0,
+		slidingUntil = 0,
+		slideReadyAt = 0,
 	}
 end
 
@@ -116,19 +131,39 @@ end
 -- The server sets walk speed (stunned < carrying < running). Players
 -- simulate their own characters, so for them this is only advice; the
 -- Movement system is what enforces it.
+function Agents.isSliding(agent: Agent): boolean
+	return os.clock() < agent.slidingUntil
+end
+
+-- Top speed the agent is allowed right now. Movement enforces this for
+-- players; refreshSpeed applies it to the Humanoid.
+function Agents.speedLimit(agent: Agent): number
+	if Agents.isStunned(agent) then
+		return 0
+	elseif Agents.isSliding(agent) then
+		return Config.SLIDE_SPEED
+	elseif agent.sprinting then
+		return if agent.carrying then Config.CARRIER_SPRINT_SPEED else Config.SPRINT_SPEED
+	end
+	return if agent.carrying then Config.CARRIER_SPEED else Config.RUN_SPEED
+end
+
+-- Pushes state to the character: WalkSpeed, plus attributes the local
+-- MovementController reads to predict its own speed without waiting on
+-- the server (Carrying, Stunned).
 function Agents.refreshSpeed(agent: Agent)
 	local humanoid = Agents.humanoid(agent)
-	if not humanoid then
+	local character = agent.character
+	if not humanoid or not character then
 		return
 	end
-	local speed = if agent.carrying then Config.CARRIER_SPEED else Config.RUN_SPEED
 	if not agent.player then
-		speed *= Config.BOT_SPEED_FACTOR
+		-- Players' WalkSpeed is set by their own MovementController from the
+		-- attributes below; writing it here too would fight it for a frame.
+		humanoid.WalkSpeed = Agents.speedLimit(agent) * Config.BOT_SPEED_FACTOR
 	end
-	if Agents.isStunned(agent) then
-		speed = 0
-	end
-	humanoid.WalkSpeed = speed
+	character:SetAttribute("Carrying", agent.carrying)
+	character:SetAttribute("Stunned", Agents.isStunned(agent))
 end
 
 function Agents.stun(agent: Agent, seconds: number)
@@ -243,6 +278,8 @@ local function onPlayerAdded(player: Player)
 	local agent = newAgent(player.DisplayName, team, player)
 	byPlayer[player] = agent
 	setTeam(agent, team)
+	-- Shift is the sprint key, so turn off Shift Lock for this player.
+	player.DevEnableMouseLock = false
 
 	player.CharacterAdded:Connect(function(character)
 		Agents.setCharacter(agent, character)
