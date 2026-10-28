@@ -139,7 +139,12 @@ local function smoothstep(x: number): number
 end
 
 -- Body tilt and drop for this moment of the pose.
-local function bodyPose(entry: Entry, kind: PoseKind, isLocal: boolean, now: number): (number, number)
+local function bodyPose(
+	entry: Entry,
+	kind: PoseKind,
+	isLocal: boolean,
+	now: number
+): (number, number)
 	if kind == "Slide" then
 		-- Your own slide already sinks via HipHeight (MovementController).
 		return SLIDE_LEAN, if isLocal then 0 else SLIDE_DROP
@@ -195,9 +200,14 @@ local function update(character: Model, dt: number, now: number)
 	local alpha = entry.alpha
 	local lean, drop = bodyPose(entry, kind, character == localPlayer.Character, now)
 	-- Rotate in root-part space (pre-multiply) so R15 and R6 tilt the same way.
-	entry.root.C0 = CFrame.new(0, -drop * alpha, 0) * CFrame.Angles(lean * alpha, 0, 0) * entry.baseC0
+	entry.root.C0 = CFrame.new(0, -drop * alpha, 0)
+		* CFrame.Angles(lean * alpha, 0, 0)
+		* entry.baseC0
 
-	local joints = if not entry.isR15 then NO_JOINTS elseif kind == "Dive" then DIVE_JOINTS else SLIDE_JOINTS
+	local joints = if not entry.isR15
+		then NO_JOINTS
+		elseif kind == "Dive" then DIVE_JOINTS
+		else SLIDE_JOINTS
 	for _, motor in entry.motors do
 		local jointTarget = joints[motor.Name] or CFrame.identity
 		motor.Transform = motor.Transform:Lerp(jointTarget, alpha)

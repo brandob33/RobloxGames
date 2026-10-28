@@ -236,7 +236,8 @@ local function playRound()
 	local result = MatchLogic.winner(scores)
 	winner = result
 	setPhase("Results", Config.RESULTS_SECONDS)
-	local notice: Types.Notice = { kind = "RoundEnd", team = if result == "Draw" then nil else result }
+	local notice: Types.Notice =
+		{ kind = "RoundEnd", team = if result == "Draw" then nil else result }
 	Net.fireAll("Notice", notice)
 	roundEnded.fire(result)
 	waitForPhaseEnd()

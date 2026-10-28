@@ -285,7 +285,9 @@ local function render()
 			return
 		end
 	end
-	refs.notice.Text = if profile.saving then "" else "Studio test: coins won't be saved this session."
+	refs.notice.Text = if profile.saving
+		then ""
+		else "Studio test: coins won't be saved this session."
 end
 
 local function setOpen(open: boolean)

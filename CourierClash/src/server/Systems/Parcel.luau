@@ -232,7 +232,12 @@ end
 -- so spamming the button gains nothing. Returns true if the carrier was hit.
 function Parcel.tackle(attacker: Agent): boolean
 	local now = os.clock()
-	if not active or now < attacker.tackleReadyAt or Agents.isStunned(attacker) or Agents.isDiving(attacker) then
+	if
+		not active
+		or now < attacker.tackleReadyAt
+		or Agents.isStunned(attacker)
+		or Agents.isDiving(attacker)
+	then
 		return false
 	end
 	if not Movement.verify(attacker) then

@@ -39,7 +39,9 @@ function Cheats.init()
 		return
 	end
 	Net.on("Cheat", onCheat)
-	print("[Courier Clash] Studio cheats on: Shift+1 Ember +1, Shift+2 Tide +1, Shift+3 end round, Shift+4 take parcel")
+	print(
+		"[Courier Clash] Studio cheats on: Shift+1 Ember +1, Shift+2 Tide +1, Shift+3 end round, Shift+4 take parcel"
+	)
 end
 
 return Cheats

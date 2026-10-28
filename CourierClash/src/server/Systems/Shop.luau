@@ -103,8 +103,10 @@ local function applyPerks(player: Player)
 	if not agent or not data then
 		return
 	end
-	agent.staminaMax = Config.STAMINA_MAX + perkLevel(data, "StaminaReserve") * ShopCatalog.STAMINA_PER_LEVEL
-	agent.staminaRegen = Config.STAMINA_REGEN * (1 + perkLevel(data, "QuickBreath") * ShopCatalog.REGEN_PER_LEVEL)
+	agent.staminaMax = Config.STAMINA_MAX
+		+ perkLevel(data, "StaminaReserve") * ShopCatalog.STAMINA_PER_LEVEL
+	agent.staminaRegen = Config.STAMINA_REGEN
+		* (1 + perkLevel(data, "QuickBreath") * ShopCatalog.REGEN_PER_LEVEL)
 end
 
 local function applyTrail(player: Player)

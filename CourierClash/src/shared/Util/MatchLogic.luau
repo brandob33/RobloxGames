@@ -54,7 +54,11 @@ function MatchLogic.balanceMove(humans: TeamScores): (TeamId?, number)
 	return from, math.floor(math.abs(diff) / 2)
 end
 
-function MatchLogic.isRoundOver(scores: TeamScores, scoreToWin: number, secondsLeft: number): boolean
+function MatchLogic.isRoundOver(
+	scores: TeamScores,
+	scoreToWin: number,
+	secondsLeft: number
+): boolean
 	return secondsLeft <= 0 or scores.Ember >= scoreToWin or scores.Tide >= scoreToWin
 end
 

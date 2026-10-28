@@ -53,7 +53,9 @@ type Profile = {
 }
 
 -- Studio uses its own store so test sessions never touch live data.
-local STORE_NAME = if RunService:IsStudio() then "CourierClashPlayers_Studio" else "CourierClashPlayers"
+local STORE_NAME = if RunService:IsStudio()
+	then "CourierClashPlayers_Studio"
+	else "CourierClashPlayers"
 local DATA_VERSION = 1
 local AUTOSAVE_SECONDS = 60
 -- A lock older than this belongs to a server that died without releasing.

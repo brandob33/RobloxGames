@@ -32,7 +32,15 @@ export type MatchState = {
 	lockedUntil: number,
 }
 
-export type NoticeKind = "Pickup" | "Delivered" | "Tackled" | "Dodged" | "Returned" | "RoundStart" | "RoundEnd" | "Go"
+export type NoticeKind =
+	"Pickup"
+	| "Delivered"
+	| "Tackled"
+	| "Dodged"
+	| "Returned"
+	| "RoundStart"
+	| "RoundEnd"
+	| "Go"
 
 export type Notice = {
 	kind: NoticeKind,

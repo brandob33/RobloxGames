@@ -136,10 +136,18 @@ function Arena.restPosition(position: Vector3): Vector3
 end
 
 function Arena.isOutOfBounds(position: Vector3): boolean
-	return position.Y < -25 or math.abs(position.X) > HALF_X + 10 or math.abs(position.Z) > HALF_Z + 10
+	return position.Y < -25
+		or math.abs(position.X) > HALF_X + 10
+		or math.abs(position.Z) > HALF_Z + 10
 end
 
-local function makePart(name: string, size: Vector3, cframe: CFrame, color: Color3, parent: Instance): Part
+local function makePart(
+	name: string,
+	size: Vector3,
+	cframe: CFrame,
+	color: Color3,
+	parent: Instance
+): Part
 	local part = Instance.new("Part")
 	part.Name = name
 	part.Anchored = true
@@ -192,8 +200,13 @@ local function buildBase(team: TeamId, parent: Instance)
 	disc.CanQuery = false
 	disc.CanTouch = false
 
-	local post =
-		makePart(team .. "DropPost", Vector3.new(1, 8, 1), CFrame.new(zone + Vector3.new(0, 4, 0)), color, parent)
+	local post = makePart(
+		team .. "DropPost",
+		Vector3.new(1, 8, 1),
+		CFrame.new(zone + Vector3.new(0, 4, 0)),
+		color,
+		parent
+	)
 	post.CanCollide = false
 	post.Transparency = 1
 	makeLabel(post, string.upper(team) .. " DROP", color)
@@ -220,7 +233,8 @@ local function buildBase(team: TeamId, parent: Instance)
 		},
 	}
 	for _, wall in boxWalls do
-		local part = makePart(team .. wall.name, wall.size, CFrame.new(wall.position), color, parent)
+		local part =
+			makePart(team .. wall.name, wall.size, CFrame.new(wall.position), color, parent)
 		part.Transparency = 0.85
 	end
 	local gate = makePart(
@@ -269,8 +283,13 @@ local function build()
 	)
 	ground.Material = Enum.Material.Grass
 
-	local stripe =
-		makePart("CenterLine", Vector3.new(1, 0.1, Config.ARENA_WIDTH), CFrame.new(0, 0.05, 0), STRIPE_COLOR, folder)
+	local stripe = makePart(
+		"CenterLine",
+		Vector3.new(1, 0.1, Config.ARENA_WIDTH),
+		CFrame.new(0, 0.05, 0),
+		STRIPE_COLOR,
+		folder
+	)
 	stripe.CanCollide = false
 
 	makePart("Pedestal", Vector3.new(6, 1, 6), CFrame.new(0, 0.5, 0), STRIPE_COLOR, folder)
@@ -293,12 +312,17 @@ local function build()
 		local zs = if obstacle.z == 0 then { 0 } else { obstacle.z, -obstacle.z }
 		for _, mirrorX in { 1, -1 } do
 			for _, z in zs do
-				local at = Vector3.new(obstacle.x * LAYOUT_SCALE_X * mirrorX, obstacle.size.Y / 2, z * LAYOUT_SCALE_Z)
+				local at = Vector3.new(
+					obstacle.x * LAYOUT_SCALE_X * mirrorX,
+					obstacle.size.Y / 2,
+					z * LAYOUT_SCALE_Z
+				)
 				local color = if obstacle.kind == "Crate"
 					then CRATE_COLOR
 					elseif obstacle.kind == "Pillar" then PILLAR_COLOR
 					else BARRIER_COLOR
-				local part = makePart(obstacle.kind .. i, obstacle.size, CFrame.new(at), color, folder)
+				local part =
+					makePart(obstacle.kind .. i, obstacle.size, CFrame.new(at), color, folder)
 				part.Material = if obstacle.kind == "Crate"
 					then Enum.Material.WoodPlanks
 					elseif obstacle.kind == "Pillar" then Enum.Material.Concrete

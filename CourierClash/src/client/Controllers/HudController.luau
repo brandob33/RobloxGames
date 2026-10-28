@@ -87,7 +87,12 @@ local function corner(parent: GuiObject, scale: number)
 	uiCorner.Parent = parent
 end
 
-local function textLabel(parent: Instance, name: string, size: UDim2, maxTextSize: number): TextLabel
+local function textLabel(
+	parent: Instance,
+	name: string,
+	size: UDim2,
+	maxTextSize: number
+): TextLabel
 	local label = Instance.new("TextLabel")
 	label.Name = name
 	label.Size = size
@@ -114,7 +119,13 @@ end
 type RoundButton = { button: TextButton, scale: UIScale, fill: Frame }
 
 -- Circular touch button with a cooldown fill that drains top-down.
-local function roundButton(parent: Instance, name: string, text: string, position: UDim2, size: number): RoundButton
+local function roundButton(
+	parent: Instance,
+	name: string,
+	text: string,
+	position: UDim2,
+	size: number
+): RoundButton
 	local button = Instance.new("TextButton")
 	button.Name = name
 	button.AnchorPoint = Vector2.new(1, 1)
@@ -348,7 +359,10 @@ local function noticeText(notice: Types.Notice): string?
 	if notice.kind == "Pickup" then
 		return actor .. " grabbed the parcel!"
 	elseif notice.kind == "Delivered" then
-		return actor .. " delivered for " .. (if notice.team then teamName(notice.team) else "?") .. "! +1"
+		return actor
+			.. " delivered for "
+			.. (if notice.team then teamName(notice.team) else "?")
+			.. "! +1"
 	elseif notice.kind == "Tackled" then
 		return actor .. " tackled " .. (notice.targetName or "the carrier") .. "!"
 	elseif notice.kind == "Dodged" then
@@ -478,8 +492,11 @@ local function drainFill(fill: Frame, seconds: number, previous: Tween?): Tween?
 	if seconds <= 0 then
 		return nil
 	end
-	local tween =
-		TweenService:Create(fill, TweenInfo.new(seconds, Enum.EasingStyle.Linear), { Size = UDim2.fromScale(1, 0) })
+	local tween = TweenService:Create(
+		fill,
+		TweenInfo.new(seconds, Enum.EasingStyle.Linear),
+		{ Size = UDim2.fromScale(1, 0) }
+	)
 	tween:Play()
 	return tween
 end
@@ -497,8 +514,11 @@ local function onSlideCooldown(seconds: number)
 	local meter = refs.slideMeter
 	meter.Size = UDim2.fromScale(0, 1)
 	meter.BackgroundColor3 = SLIDE_CHARGING_COLOR
-	local tween =
-		TweenService:Create(meter, TweenInfo.new(seconds, Enum.EasingStyle.Linear), { Size = UDim2.fromScale(1, 1) })
+	local tween = TweenService:Create(
+		meter,
+		TweenInfo.new(seconds, Enum.EasingStyle.Linear),
+		{ Size = UDim2.fromScale(1, 1) }
+	)
 	tween.Completed:Once(function(playback)
 		if playback == Enum.PlaybackState.Completed then
 			meter.BackgroundColor3 = SLIDE_READY_COLOR
@@ -511,7 +531,9 @@ end
 local function renderStamina()
 	local value = localPlayer:GetAttribute("Stamina")
 	local maxValue = localPlayer:GetAttribute("StaminaMax")
-	local maximum = if typeof(maxValue) == "number" and maxValue > 0 then maxValue else Config.STAMINA_MAX
+	local maximum = if typeof(maxValue) == "number" and maxValue > 0
+		then maxValue
+		else Config.STAMINA_MAX
 	local fraction = if typeof(value) == "number" then math.clamp(value / maximum, 0, 1) else 1
 	if staminaTween then
 		staminaTween:Cancel()

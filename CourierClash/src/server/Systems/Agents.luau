@@ -276,7 +276,8 @@ function Agents.setCharacter(agent: Agent, character: Model?)
 		return
 	end
 
-	local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 5) :: Humanoid?
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+		or character:WaitForChild("Humanoid", 5) :: Humanoid?
 	if not humanoid or agent.character ~= character then
 		return
 	end

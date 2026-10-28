@@ -360,7 +360,13 @@ local function tryTackle(agent: Agent, position: Vector3)
 	end
 end
 
-local function steer(brain: Brain, humanoid: Humanoid, position: Vector3, target: Vector3, now: number)
+local function steer(
+	brain: Brain,
+	humanoid: Humanoid,
+	position: Vector3,
+	target: Vector3,
+	now: number
+)
 	local toTarget = flat(target - position)
 	local moved = flat(position - brain.lastPosition).Magnitude
 	brain.lastPosition = position
