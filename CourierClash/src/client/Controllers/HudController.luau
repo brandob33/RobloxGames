@@ -530,9 +530,11 @@ end
 
 local function renderStamina()
 	local value = localPlayer:GetAttribute("Stamina")
-	local fraction = if typeof(value) == "number"
-		then math.clamp(value / Config.STAMINA_MAX, 0, 1)
-		else 1
+	local maxValue = localPlayer:GetAttribute("StaminaMax")
+	local maximum = if typeof(maxValue) == "number" and maxValue > 0
+		then maxValue
+		else Config.STAMINA_MAX
+	local fraction = if typeof(value) == "number" then math.clamp(value / maximum, 0, 1) else 1
 	if staminaTween then
 		staminaTween:Cancel()
 	end
@@ -569,6 +571,7 @@ function HudController.init()
 		MovementController.slide()
 	end)
 	localPlayer:GetAttributeChangedSignal("Stamina"):Connect(renderStamina)
+	localPlayer:GetAttributeChangedSignal("StaminaMax"):Connect(renderStamina)
 end
 
 function HudController.start()

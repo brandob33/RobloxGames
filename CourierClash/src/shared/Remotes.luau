@@ -10,6 +10,10 @@
 --   Sprint         C→S  boolean: sprint key held or released
 --   Slide          C→S  no arguments; the server checks sprint/stamina/cooldown
 --   SlideResult    S→C  boolean: whether the server accepted the last slide
+--   Profile        S→C  ProfileView: coins, owned items, perk levels
+--   CoinsEarned    S→C  amount: number, reason: CoinReason
+--   Shop           C→S  ShopRequest; validated against ShopCatalog
+--   ShopResult     S→C  ShopResult: whether it worked and why not
 --   Cheat          C→S  CheatCommand; ignored outside Studio
 
 export type RemoteName =
@@ -21,6 +25,10 @@ export type RemoteName =
 	| "Sprint"
 	| "Slide"
 	| "SlideResult"
+	| "Profile"
+	| "CoinsEarned"
+	| "Shop"
+	| "ShopResult"
 	| "Cheat"
 
 local NAMES: { RemoteName } = {
@@ -32,6 +40,10 @@ local NAMES: { RemoteName } = {
 	"Sprint",
 	"Slide",
 	"SlideResult",
+	"Profile",
+	"CoinsEarned",
+	"Shop",
+	"ShopResult",
 	"Cheat",
 }
 

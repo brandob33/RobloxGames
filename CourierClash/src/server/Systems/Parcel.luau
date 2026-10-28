@@ -28,6 +28,9 @@ Parcel.Changed = changed
 -- Fired when a carrier reaches their own drop zone.
 local delivered: Signal.Signal<Agent> = Signal.new()
 Parcel.Delivered = delivered
+-- Fired with the tackler when a tackle knocks the parcel loose.
+local tackleLanded: Signal.Signal<Agent> = Signal.new()
+Parcel.TackleLanded = tackleLanded
 
 local STEP_INTERVAL = 0.1
 local CARRY_OFFSET = CFrame.new(0, 3.4, 0)
@@ -286,6 +289,7 @@ function Parcel.tackle(attacker: Agent): boolean
 		actorName = attacker.name,
 		targetName = target.name,
 	})
+	tackleLanded.fire(attacker)
 	return true
 end
 

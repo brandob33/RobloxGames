@@ -6,6 +6,7 @@
 --
 -- Replicated for the HUD and client prediction (Player attributes):
 --   Stamina   number, rounded
+--   StaminaMax number (base plus shop perks)
 --   Sprinting boolean, the server's verdict
 
 local RunService = game:GetService("RunService")
@@ -38,6 +39,9 @@ local function publish(agent: Agent)
 	local stamina = math.floor(agent.stamina + 0.5)
 	if player:GetAttribute("Stamina") ~= stamina then
 		player:SetAttribute("Stamina", stamina)
+	end
+	if player:GetAttribute("StaminaMax") ~= agent.staminaMax then
+		player:SetAttribute("StaminaMax", agent.staminaMax)
 	end
 	if player:GetAttribute("Sprinting") ~= agent.sprinting then
 		player:SetAttribute("Sprinting", agent.sprinting)
@@ -115,7 +119,7 @@ local function step(dt: number)
 				agent.exhausted = true
 			end
 		elseif now >= agent.staminaRegenAt then
-			agent.stamina = math.min(Config.STAMINA_MAX, agent.stamina + Config.STAMINA_REGEN * dt)
+			agent.stamina = math.min(agent.staminaMax, agent.stamina + agent.staminaRegen * dt)
 		end
 		if agent.exhausted and agent.stamina >= Config.SPRINT_MIN_STAMINA then
 			agent.exhausted = false
